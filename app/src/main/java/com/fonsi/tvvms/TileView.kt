@@ -135,7 +135,8 @@ class TileView(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                showStatus("Sin señal")
+                val detail = (error.cause?.message ?: error.message ?: "").replace("\n", " ").take(70)
+                showStatus("Sin señal\n" + error.errorCodeName + (if (detail.isEmpty()) "" else "\n" + detail))
                 scheduleRetry()
             }
         })
