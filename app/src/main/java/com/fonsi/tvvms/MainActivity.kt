@@ -25,7 +25,6 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : Activity() {
-    private val MAX_HD_TILES = 2
 
 
     private val gold = Color.parseColor("#C9A04B")
@@ -228,7 +227,6 @@ class MainActivity : Activity() {
         addToBar(next, 0)
         bar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         addToBar(chipAuto)
-        addToBar(chipHd)
         addToBar(camsChip)
         addToBar(clock, 20)
 
@@ -311,8 +309,7 @@ class MainActivity : Activity() {
         val to = minOf(cameras.size, from + size)
         for (i in from until to) {
             val cam = cameras[i]
-            val hdTile = store.hd && (i - from) < MAX_HD_TILES
-            val tile = TileView(this, cam, hdTile, false)
+            val tile = TileView(this, cam, false, false)
             tile.setOnClickListener {
                 showFull(cameras.indexOfFirst { it.id == cam.id })
             }
