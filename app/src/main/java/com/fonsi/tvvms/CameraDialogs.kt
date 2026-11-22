@@ -7,6 +7,7 @@ import android.text.method.PasswordTransformationMethod
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -58,6 +59,84 @@ class CameraDialogs(
             edit.transformationMethod = if (checked) null else PasswordTransformationMethod.getInstance()
         }
         parent.addView(cb)
+    }
+
+    private fun scanButton(root: LinearLayout, onPick: (LanScan.Found) -> Unit): Button {
+        val b = Button(act)
+        b.text = "Buscar en la red local"
+        b.isAllCaps = false
+        b.setOnClickListener { showScan(onPick) }
+        root.addView(b)
+        return b
+    }
+
+    private fun showScan(onPick: (LanScan.Found) -> Unit) {
+        val box = formRoot()
+        val label = TextView(act)
+        label.text = "Red a explorar (tres primeros números)"
+        label.textSize = 12f
+        val et = EditText(act)
+        et.setSingleLine(true)
+        et.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        et.setText(LanScan.detectPrefix() ?: "192.168.1")
+        val hint = TextView(act)
+        hint.text = "Se probarán las 254 direcciones de esa red (de .1 a .254). " +
+            "Si pruebas en el emulador, escribe aquí la red de tu casa."
+        hint.textSize = 12f
+        box.addView(label)
+        box.addView(et)
+        box.addView(hint)
+        AlertDialog.Builder(act)
+            .setTitle("Buscar equipos")
+            .setView(box)
+            .setPositiveButton("Buscar") { _, _ -> runScan(et.text.toString().trim(), onPick) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun runScan(prefix: String, onPick: (LanScan.Found) -> Unit) {
+        if (!Regex("^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$").matches(prefix)) {
+            toast("Escribe tres números separados por puntos, por ejemplo 192.168.1")
+            return
+        }
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val progress = AlertDialog.Builder(act)
+            .setTitle("Buscando equipos…")
+            .setMessage("0 %")
+            .setCancelable(false)
+            .setNegativeButton("Cancelar") { _, _ -> cancelled.set(true) }
+            .create()
+        progress.show()
+        Thread {
+            val res = try {
+                LanScan.scan(act, prefix, { cancelled.get() }) { pct ->
+                    act.runOnUiThread { progress.setMessage(pct.toString() + " %") }
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+            act.runOnUiThread {
+                if (progress.isShowing) progress.dismiss()
+                if (!cancelled.get()) showScanResults(res, onPick)
+            }
+        }.start()
+    }
+
+    private fun showScanResults(res: List<LanScan.Found>, onPick: (LanScan.Found) -> Unit) {
+        if (res.isEmpty()) {
+            AlertDialog.Builder(act)
+                .setTitle("Sin resultados")
+                .setMessage("No se encontró ninguna cámara ni grabador en esa red. Comprueba que la TV está en la misma red y que el rango es correcto.")
+                .setPositiveButton("Aceptar", null)
+                .show()
+            return
+        }
+        val items = res.map { it.label() }.toTypedArray()
+        AlertDialog.Builder(act)
+            .setTitle("Equipos encontrados (" + res.size + ")")
+            .setItems(items) { _, which -> onPick(res[which]) }
+            .setNegativeButton("Cerrar", null)
+            .show()
     }
 
     private fun formRoot(): LinearLayout {
@@ -152,6 +231,12 @@ class CameraDialogs(
 
         val name = addRow(root, "Nombre", existing?.name ?: "", text)
         val host = addRow(root, "IP o dirección", existing?.host ?: "", uri)
+        val scanBtn = scanButton(root) { f ->
+            host.edit.setText(f.ip)
+            val target = f.brand ?: Brand.ONVIF
+            val i = brands.indexOf(target)
+            if (i >= 0) spinner.setSelection(i)
+        }
         val rtspPort = addRow(root, "Puerto RTSP", (existing?.port ?: 554).toString(), number)
         val onvifPort = addRow(root, "Puerto ONVIF (HTTP)", (existing?.onvifPort ?: 80).toString(), number)
         val user = addRow(root, "Usuario", existing?.user ?: "admin", text)
@@ -165,6 +250,7 @@ class CameraDialogs(
             val b = brands[spinner.selectedItemPosition]
             val nativeBrand = b == Brand.DAHUA || b == Brand.HIKVISION
             host.box.visibility = if (b != Brand.RTSP) View.VISIBLE else View.GONE
+            scanBtn.visibility = host.box.visibility
             rtspPort.box.visibility = if (nativeBrand) View.VISIBLE else View.GONE
             channel.box.visibility = if (nativeBrand) View.VISIBLE else View.GONE
             onvifPort.box.visibility = if (b == Brand.ONVIF) View.VISIBLE else View.GONE
@@ -272,6 +358,14 @@ class CameraDialogs(
 
         val baseName = addRow(root, "Nombre base (se añade el nº de canal)", "Cámara", text)
         val host = addRow(root, "IP del NVR / DVR", "", uri)
+        scanButton(root) { f ->
+            host.edit.setText(f.ip)
+            val b = f.brand
+            if (b != null) {
+                val i = brands.indexOf(b)
+                if (i >= 0) spinner.setSelection(i)
+            }
+        }
         val rtspPort = addRow(root, "Puerto RTSP", "554", number)
         val user = addRow(root, "Usuario", "admin", text)
         val pass = addRow(root, "Contraseña", "", visiblePass)
