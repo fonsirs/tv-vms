@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.text.SimpleDateFormat
@@ -110,12 +111,10 @@ class MainActivity : Activity() {
         bar.setBackgroundColor(bgColor)
         bar.setPadding(dp(22), dp(10), dp(22), dp(8))
 
-        val brand = TextView(this)
-        brand.text = "TV VMS"
-        brand.setTextColor(gold)
-        brand.textSize = 18f
-        brand.typeface = Typeface.DEFAULT_BOLD
-        brand.letterSpacing = 0.12f
+        val brand = ImageView(this)
+        brand.setImageResource(R.drawable.logo_bar)
+        brand.adjustViewBounds = true
+        brand.scaleType = ImageView.ScaleType.FIT_CENTER
 
         chip4 = chip("4") { setGrid(4) }
         chip8 = chip("8") { setGrid(8) }
@@ -148,7 +147,7 @@ class MainActivity : Activity() {
         clock.typeface = Typeface.DEFAULT_BOLD
         clock.text = timeFmt.format(Date())
 
-        addToBar(brand, 0)
+        bar.addView(brand, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)))
         addToBar(chip4, 28)
         addToBar(chip8)
         addToBar(chip16)
