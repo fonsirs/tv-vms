@@ -162,9 +162,18 @@ class TileView(
         connect()
     }
 
+    private var gotFrame = false
+    private val watchdog = Runnable {
+        if (active && !gotFrame) {
+            attempts++
+            connect()
+        }
+    }
+
     fun stop() {
         active = false
         handler.removeCallbacks(retryRunnable)
+        handler.removeCallbacks(watchdog)
         releasePlayer()
     }
 
@@ -176,6 +185,8 @@ class TileView(
 
     private fun connect() {
         releasePlayer()
+        gotFrame = false
+        handler.removeCallbacks(watchdog)
         val url = StreamUrls.url(camera, useMainStream)
         if (url.isBlank()) {
             showStatus("Sin URL de vídeo", true)
@@ -193,6 +204,12 @@ class TileView(
         p.volume = if (audio) 1f else 0f
         p.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
+                gotFrame = true
+                handler.removeCallbacks(watchdog)
+                playerView.post {
+                    playerView.requestLayout()
+                    playerView.videoSurfaceView?.invalidate()
+                }
                 attempts = 0
                 status.visibility = View.GONE
                 dotShape.setColor(green)
@@ -217,6 +234,7 @@ class TileView(
         p.prepare()
         p.playWhenReady = true
         player = p
+        handler.postDelayed(watchdog, 7000L)
     }
 
     private fun scheduleRetry() {
