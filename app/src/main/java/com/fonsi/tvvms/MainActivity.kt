@@ -98,6 +98,18 @@ class MainActivity : Activity() {
         pinDialog = null
     }
 
+    override fun onStop() {
+        super.onStop()
+        handler.removeCallbacksAndMessages(null)
+        stopTiles()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        stopTiles()
+        super.onDestroy()
+    }
+
     private fun startUi() {
         cameras = store.load()
         fullIndex = -1
@@ -324,8 +336,8 @@ class MainActivity : Activity() {
         )
         val starting = ArrayList<TileView>(tiles)
         for ((n, t) in starting.withIndex()) {
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (t.isAttachedToWindow) t.start()
+            handler.postDelayed({
+                if (tiles.contains(t)) t.start()
             }, n * 250L)
         }
         pageLabel.text = (page + 1).toString() + " / " + pages + "   ·   " + cameras.size + " cámaras"

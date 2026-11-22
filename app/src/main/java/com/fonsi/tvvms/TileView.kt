@@ -151,6 +151,11 @@ class TileView(
         animate().scaleX(s).scaleY(s).translationZ(z).setDuration(130L).start()
     }
 
+    override fun onDetachedFromWindow() {
+        stop()
+        super.onDetachedFromWindow()
+    }
+
     fun setAudio(on: Boolean) {
         audio = on
         player?.volume = if (on) 1f else 0f
