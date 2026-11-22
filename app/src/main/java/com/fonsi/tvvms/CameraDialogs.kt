@@ -61,11 +61,18 @@ class CameraDialogs(
         parent.addView(cb)
     }
 
-    private fun scanButton(root: LinearLayout, onPick: (LanScan.Found) -> Unit): Button {
-        val b = Button(act)
-        b.text = "Buscar en la red local"
-        b.isAllCaps = false
+    private fun scanButton(root: LinearLayout, onPick: (LanScan.Found) -> Unit): View {
+        val b = Chip(act, "BUSCAR")
+        b.filled = true
         b.setOnClickListener { showScan(onPick) }
+        val d = act.resources.displayMetrics.density
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.topMargin = (8 * d).toInt()
+        lp.bottomMargin = (8 * d).toInt()
+        b.layoutParams = lp
         root.addView(b)
         return b
     }
