@@ -3,11 +3,14 @@ package com.fonsi.tvvms
 import android.content.Context
 import org.json.JSONArray
 
+/** Lista de cámaras (con usuarios y contraseñas) guardada CIFRADA con una clave del Android Keystore. */
 class CameraStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("vms", Context.MODE_PRIVATE)
 
-    fun load(): List<Camera> {
-        val raw = prefs.getString("cameras", null) ?: return emptyList()
+    /** Se avisa aquí de fallos de cifrado/lectura para mostrarlos al usuario. */
+    var onError: ((String) -> Unit)? = null
+
+    private fun parse(raw: String): List<Camera> {
         return try {
             val arr = JSONArray(raw)
             val out = ArrayList<Camera>()
@@ -20,10 +23,35 @@ class CameraStore(context: Context) {
         }
     }
 
-    fun save(list: List<Camera>) {
-        val arr = JSONArray()
-        for (c in list) arr.put(c.toJson())
-        prefs.edit().putString("cameras", arr.toString()).apply()
+    /** Si quedara una lista antigua sin cifrar, la cifra y borra el original. */
+    private fun migrateLegacy() {
+        val legacy = prefs.getString("cameras", null) ?: return
+        if (save(parse(legacy))) {
+            prefs.edit().remove("cameras").apply()
+        }
+    }
+
+    fun load(): List<Camera> {
+        migrateLegacy()
+        val enc = prefs.getString("cameras_enc", null) ?: return emptyList()
+        val raw = Vault.decrypt(enc)
+        if (raw == null) {
+            onError?.invoke("No se pudieron leer las cámaras guardadas (clave de cifrado no válida). Vuelve a añadirlas.")
+            return emptyList()
+        }
+        return parse(raw)
+    }
+
+    fun save(list: List<Camera>): Boolean {
+        return try {
+            val arr = JSONArray()
+            for (c in list) arr.put(c.toJson())
+            prefs.edit().putString("cameras_enc", Vault.encrypt(arr.toString())).apply()
+            true
+        } catch (e: Exception) {
+            onError?.invoke("Este dispositivo no pudo cifrar los datos. No se ha guardado nada.")
+            false
+        }
     }
 
     fun add(c: Camera) {

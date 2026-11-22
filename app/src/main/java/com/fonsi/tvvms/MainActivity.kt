@@ -1,21 +1,25 @@
 package com.fonsi.tvvms
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -30,6 +34,7 @@ class MainActivity : Activity() {
 
     private lateinit var store: CameraStore
     private lateinit var dialogs: CameraDialogs
+    private lateinit var pinStore: PinStore
     private lateinit var bar: LinearLayout
     private lateinit var content: FrameLayout
     private lateinit var pageLabel: TextView
@@ -45,6 +50,9 @@ class MainActivity : Activity() {
     private val tiles = ArrayList<TileView>()
     private var page = 0
     private var fullIndex = -1
+    private var unlocked = false
+    private var pausedAt = 0L
+    private var pinDialog: AlertDialog? = null
 
     private val hideBarRunnable = Runnable { hideBarNow() }
     private val clockRunnable = object : Runnable {
@@ -64,12 +72,32 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = CameraStore(this)
-        dialogs = CameraDialogs(this, store) { onCamerasChanged() }
+        store.onError = { msg -> runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() } }
+        pinStore = PinStore(this)
+        dialogs = CameraDialogs(this, store, pinStore) { onCamerasChanged() }
         buildUi()
     }
 
     override fun onResume() {
         super.onResume()
+        if (unlocked && pinStore.isSet() && System.currentTimeMillis() - pausedAt > 60000L) unlocked = false
+        if (pinStore.isSet() && !unlocked) {
+            showLock()
+            return
+        }
+        startUi()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        pausedAt = System.currentTimeMillis()
+        handler.removeCallbacksAndMessages(null)
+        stopTiles()
+        pinDialog?.dismiss()
+        pinDialog = null
+    }
+
+    private fun startUi() {
         cameras = store.load()
         fullIndex = -1
         renderGrid()
@@ -78,10 +106,52 @@ class MainActivity : Activity() {
         handler.post(clockRunnable)
     }
 
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacksAndMessages(null)
+    // ------------------------------------------------------------ Bloqueo con PIN
+
+    private fun showLock() {
         stopTiles()
+        content.removeAllViews()
+        bar.visibility = View.GONE
+
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(24), dp(8), dp(24), dp(8))
+        val et = EditText(this)
+        et.hint = "PIN"
+        et.setSingleLine(true)
+        et.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        box.addView(et)
+
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("TV VMS bloqueada")
+            .setMessage("Introduce el PIN para ver las cámaras")
+            .setView(box)
+            .setCancelable(false)
+            .setPositiveButton("Entrar", null)
+            .setNegativeButton("Salir") { _, _ -> finish() }
+            .create()
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val wait = pinStore.lockedSeconds()
+                if (wait > 0) {
+                    Toast.makeText(this, "Demasiados intentos. Espera " + wait + " s", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (pinStore.check(et.text.toString())) {
+                    unlocked = true
+                    dlg.dismiss()
+                    pinDialog = null
+                    startUi()
+                } else {
+                    et.setText("")
+                    val w2 = pinStore.lockedSeconds()
+                    val msg = if (w2 > 0) "PIN incorrecto. Bloqueado " + w2 + " s" else "PIN incorrecto"
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        dlg.show()
+        pinDialog = dlg
     }
 
     // ---------------------------------------------------------------- UI
@@ -391,6 +461,7 @@ class MainActivity : Activity() {
     // --------------------------------------------------------------- Mando
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (pinStore.isSet() && !unlocked) return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_DOWN) {
             if (fullIndex >= 0) {
                 when (event.keyCode) {

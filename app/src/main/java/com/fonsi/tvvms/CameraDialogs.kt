@@ -3,9 +3,11 @@ package com.fonsi.tvvms
 import android.app.Activity
 import android.app.AlertDialog
 import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -18,6 +20,7 @@ import java.util.UUID
 class CameraDialogs(
     private val act: Activity,
     private val store: CameraStore,
+    private val pin: PinStore,
     private val onChanged: () -> Unit
 ) {
 
@@ -47,6 +50,16 @@ class CameraDialogs(
         return Row(box, et)
     }
 
+    private fun addShowPassword(parent: LinearLayout, edit: EditText) {
+        edit.transformationMethod = PasswordTransformationMethod.getInstance()
+        val cb = CheckBox(act)
+        cb.text = "Mostrar contraseña"
+        cb.setOnCheckedChangeListener { _, checked ->
+            edit.transformationMethod = if (checked) null else PasswordTransformationMethod.getInstance()
+        }
+        parent.addView(cb)
+    }
+
     private fun formRoot(): LinearLayout {
         val root = LinearLayout(act)
         root.orientation = LinearLayout.VERTICAL
@@ -67,6 +80,7 @@ class CameraDialogs(
         val items = ArrayList<String>()
         items.add("➕  Añadir cámara")
         items.add("➕  Añadir NVR / DVR (varios canales)")
+        items.add("PIN de acceso a la app" + (if (pin.isSet()) "  (activado)" else "  (desactivado)"))
         for (c in cams) {
             items.add(c.name + "   ·   " + c.brand.label + "   " + c.host)
         }
@@ -76,7 +90,8 @@ class CameraDialogs(
                 when (which) {
                     0 -> showForm(null)
                     1 -> showNvrForm()
-                    else -> showActions(cams[which - 2])
+                    2 -> showPinMenu()
+                    else -> showActions(cams[which - 3])
                 }
             }
             .setNegativeButton("Cerrar", null)
@@ -141,6 +156,7 @@ class CameraDialogs(
         val onvifPort = addRow(root, "Puerto ONVIF (HTTP)", (existing?.onvifPort ?: 80).toString(), number)
         val user = addRow(root, "Usuario", existing?.user ?: "admin", text)
         val pass = addRow(root, "Contraseña", existing?.pass ?: "", visiblePass)
+        addShowPassword(root, pass.edit)
         val channel = addRow(root, "Canal (1, 2, 3…)", (existing?.channel ?: 1).toString(), number)
         val mainUrl = addRow(root, "URL RTSP principal", existing?.mainUrl ?: "", uri)
         val subUrl = addRow(root, "URL RTSP secundaria (opcional)", existing?.subUrl ?: "", uri)
@@ -259,6 +275,7 @@ class CameraDialogs(
         val rtspPort = addRow(root, "Puerto RTSP", "554", number)
         val user = addRow(root, "Usuario", "admin", text)
         val pass = addRow(root, "Contraseña", "", visiblePass)
+        addShowPassword(root, pass.edit)
         val from = addRow(root, "Primer canal", "1", number)
         val to = addRow(root, "Último canal", "16", number)
 
@@ -306,6 +323,101 @@ class CameraDialogs(
                 store.addAll(list)
                 onChanged()
                 dlg.dismiss()
+                showList()
+            }
+        }
+        dlg.show()
+    }
+
+    // ------------------------------------------------------------------ PIN
+
+    private fun pinField(hint: String): EditText {
+        val et = EditText(act)
+        et.hint = hint
+        et.setSingleLine(true)
+        et.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        return et
+    }
+
+    private fun showPinMenu() {
+        if (!pin.isSet()) {
+            askNewPin()
+            return
+        }
+        val opts = arrayOf("Cambiar PIN", "Quitar PIN")
+        AlertDialog.Builder(act)
+            .setTitle("PIN de acceso")
+            .setItems(opts) { _, which ->
+                verifyPin {
+                    if (which == 0) {
+                        askNewPin()
+                    } else {
+                        pin.clear()
+                        toast("PIN eliminado")
+                        showList()
+                    }
+                }
+            }
+            .setNegativeButton("Atrás") { _, _ -> showList() }
+            .show()
+    }
+
+    private fun verifyPin(onOk: () -> Unit) {
+        val box = formRoot()
+        val et = pinField("PIN actual")
+        box.addView(et)
+        val dlg = AlertDialog.Builder(act)
+            .setTitle("Introduce el PIN actual")
+            .setView(box)
+            .setPositiveButton("Aceptar", null)
+            .setNegativeButton("Cancelar") { _, _ -> showList() }
+            .create()
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val wait = pin.lockedSeconds()
+                if (wait > 0) {
+                    toast("Demasiados intentos. Espera " + wait + " s")
+                    return@setOnClickListener
+                }
+                if (pin.check(et.text.toString())) {
+                    dlg.dismiss()
+                    onOk()
+                } else {
+                    val w2 = pin.lockedSeconds()
+                    toast(if (w2 > 0) "PIN incorrecto. Bloqueado " + w2 + " s" else "PIN incorrecto")
+                }
+            }
+        }
+        dlg.show()
+    }
+
+    private fun askNewPin() {
+        val box = formRoot()
+        val a = pinField("Nuevo PIN (4 a 8 cifras)")
+        val b = pinField("Repite el PIN")
+        box.addView(a)
+        box.addView(b)
+        val dlg = AlertDialog.Builder(act)
+            .setTitle("Crear PIN de acceso")
+            .setView(box)
+            .setPositiveButton("Guardar", null)
+            .setNegativeButton("Cancelar") { _, _ -> showList() }
+            .create()
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val p1 = a.text.toString()
+                val p2 = b.text.toString()
+                if (p1.length < 4 || p1.length > 8) {
+                    toast("El PIN debe tener entre 4 y 8 cifras")
+                    return@setOnClickListener
+                }
+                if (p1 != p2) {
+                    toast("Los dos PIN no coinciden")
+                    return@setOnClickListener
+                }
+                pin.set(p1)
+                dlg.dismiss()
+                toast("PIN activado")
                 showList()
             }
         }

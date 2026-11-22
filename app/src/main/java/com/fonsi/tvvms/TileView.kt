@@ -48,6 +48,7 @@ class TileView(
     private var attempts = 0
     private var active = false
     private var audio = false
+    private val credRegex = Regex("(?i)rtsps?://[^@/\\s]*@")
     private val retryRunnable = Runnable {
         if (active) connect()
     }
@@ -198,7 +199,7 @@ class TileView(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val detail = (error.cause?.message ?: error.message ?: "").replace("\n", " ").take(70)
+                val detail = (error.cause?.message ?: error.message ?: "").replace("\n", " ").replace(credRegex, "rtsp://***@").take(70)
                 showStatus(
                     "Sin señal\n" + error.errorCodeName + (if (detail.isEmpty()) "" else "\n" + detail),
                     true

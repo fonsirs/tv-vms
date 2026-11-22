@@ -3,6 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// La clave de firma NO está en el repositorio: llega por variables de entorno (secretos de GitHub).
+val ksPath: String = System.getenv("KS_PATH") ?: ""
+
 android {
     namespace = "com.fonsi.tvvms"
     compileSdk = 34
@@ -11,22 +14,30 @@ android {
         applicationId = "com.fonsi.tvvms"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        if (ksPath.isNotEmpty()) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("KS_PASS")
+                keyAlias = System.getenv("KS_ALIAS")
+                keyPassword = System.getenv("KS_KEY_PASS")
+            }
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = false
+            isDebuggable = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (ksPath.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
