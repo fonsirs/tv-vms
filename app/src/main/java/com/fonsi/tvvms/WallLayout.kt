@@ -4,12 +4,12 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 
-/** Reparte sus hijos en una cuadrícula de cols x rows ocupando toda la pantalla. */
+/** Reparte sus hijos en una cuadrícula de cols x rows ocupando todo el espacio. */
 class WallLayout(context: Context) : ViewGroup(context) {
 
     var cols = 2
     var rows = 2
-    private val gap = (2 * resources.displayMetrics.density).toInt()
+    private val gap = (5 * resources.displayMetrics.density).toInt()
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)

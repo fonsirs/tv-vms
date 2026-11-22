@@ -2,6 +2,8 @@ package com.fonsi.tvvms
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,26 +12,32 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : Activity() {
 
     private val gold = Color.parseColor("#D4AF37")
+    private val muted = Color.parseColor("#8A93A0")
+    private val bgColor = Color.parseColor("#0B0D10")
     private val handler = Handler(Looper.getMainLooper())
+    private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private lateinit var store: CameraStore
     private lateinit var dialogs: CameraDialogs
     private lateinit var bar: LinearLayout
     private lateinit var content: FrameLayout
     private lateinit var pageLabel: TextView
-    private lateinit var btn4: Button
-    private lateinit var btn8: Button
-    private lateinit var btn16: Button
-    private lateinit var btnAuto: Button
-    private lateinit var btnHd: Button
+    private lateinit var clock: TextView
+    private lateinit var chip4: Chip
+    private lateinit var chip8: Chip
+    private lateinit var chip16: Chip
+    private lateinit var chipAuto: Chip
+    private lateinit var chipHd: Chip
 
     private var cameras: List<Camera> = emptyList()
     private var wall: WallLayout? = null
@@ -38,6 +46,12 @@ class MainActivity : Activity() {
     private var fullIndex = -1
 
     private val hideBarRunnable = Runnable { hideBarNow() }
+    private val clockRunnable = object : Runnable {
+        override fun run() {
+            clock.text = timeFmt.format(Date())
+            handler.postDelayed(this, 15000L)
+        }
+    }
     private val autoRunnable = object : Runnable {
         override fun run() {
             if (fullIndex < 0 && pageCount() > 1) changePage(1)
@@ -60,6 +74,7 @@ class MainActivity : Activity() {
         renderGrid()
         showBar()
         restartAuto()
+        handler.post(clockRunnable)
     }
 
     override fun onPause() {
@@ -72,64 +87,79 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun barButton(text: String, onClick: () -> Unit): Button {
-        val b = Button(this)
-        b.text = text
-        b.isAllCaps = false
-        b.textSize = 14f
-        b.minWidth = 0
-        b.minimumWidth = 0
-        b.setOnClickListener { onClick() }
-        return b
+    private fun chip(label: String, onClick: () -> Unit): Chip {
+        val c = Chip(this, label)
+        c.setOnClickListener { onClick() }
+        return c
     }
 
-    private fun addToBar(v: View) {
+    private fun addToBar(v: View, leftMargin: Int = 6) {
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.setMargins(dp(4), dp(2), dp(4), dp(2))
+        lp.setMargins(dp(leftMargin), 0, 0, 0)
         bar.addView(v, lp)
     }
 
     private fun buildUi() {
         val rootLayout = LinearLayout(this)
         rootLayout.orientation = LinearLayout.VERTICAL
-        rootLayout.setBackgroundColor(Color.BLACK)
+        rootLayout.setBackgroundColor(bgColor)
 
         bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER_VERTICAL
-        bar.setBackgroundColor(Color.parseColor("#FF14181F"))
-        bar.setPadding(dp(8), dp(2), dp(8), dp(2))
+        bar.setBackgroundColor(bgColor)
+        bar.setPadding(dp(22), dp(10), dp(22), dp(8))
 
-        btn4 = barButton("4") { setGrid(4) }
-        btn8 = barButton("8") { setGrid(8) }
-        btn16 = barButton("16") { setGrid(16) }
-        val prev = barButton("◀") { changePage(-1) }
+        val brand = TextView(this)
+        brand.text = "TV VMS"
+        brand.setTextColor(gold)
+        brand.textSize = 18f
+        brand.typeface = Typeface.DEFAULT_BOLD
+        brand.letterSpacing = 0.12f
+
+        chip4 = chip("4") { setGrid(4) }
+        chip8 = chip("8") { setGrid(8) }
+        chip16 = chip("16") { setGrid(16) }
+        val prev = chip("‹") { changePage(-1) }
+        val next = chip("›") { changePage(1) }
         pageLabel = TextView(this)
-        pageLabel.setTextColor(Color.WHITE)
+        pageLabel.setTextColor(muted)
         pageLabel.textSize = 14f
-        pageLabel.setPadding(dp(8), 0, dp(8), 0)
-        val next = barButton("▶") { changePage(1) }
-        btnAuto = barButton("") {
+        pageLabel.setPadding(dp(12), 0, dp(12), 0)
+
+        val spacer = View(this)
+
+        chipAuto = chip("Auto") {
             store.auto = !store.auto
             updateBar()
             restartAuto()
         }
-        btnHd = barButton("") {
+        chipHd = chip("SD") {
             store.hd = !store.hd
             updateBar()
             renderGrid()
         }
-        val camsBtn = barButton("Cámaras") { dialogs.showList() }
+        val camsChip = chip("Cámaras") { dialogs.showList() }
+        camsChip.filled = true
 
-        addToBar(btn4)
-        addToBar(btn8)
-        addToBar(btn16)
-        addToBar(prev)
-        addToBar(pageLabel)
-        addToBar(next)
-        addToBar(btnAuto)
-        addToBar(btnHd)
-        addToBar(camsBtn)
+        clock = TextView(this)
+        clock.setTextColor(muted)
+        clock.textSize = 16f
+        clock.typeface = Typeface.DEFAULT_BOLD
+        clock.text = timeFmt.format(Date())
+
+        addToBar(brand, 0)
+        addToBar(chip4, 28)
+        addToBar(chip8)
+        addToBar(chip16)
+        addToBar(prev, 22)
+        addToBar(pageLabel, 0)
+        addToBar(next, 0)
+        bar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
+        addToBar(chipAuto)
+        addToBar(chipHd)
+        addToBar(camsChip)
+        addToBar(clock, 20)
 
         content = FrameLayout(this)
 
@@ -144,11 +174,13 @@ class MainActivity : Activity() {
 
     private fun updateBar() {
         val g = store.gridSize
-        btn4.setTextColor(if (g == 4) gold else Color.WHITE)
-        btn8.setTextColor(if (g == 8) gold else Color.WHITE)
-        btn16.setTextColor(if (g == 16) gold else Color.WHITE)
-        btnAuto.text = if (store.auto) "Auto: SÍ" else "Auto: NO"
-        btnHd.text = if (store.hd) "Flujo: HD" else "Flujo: SD"
+        chip4.active = g == 4
+        chip8.active = g == 8
+        chip16.active = g == 16
+        chipAuto.active = store.auto
+        chipAuto.text = if (store.auto) "Auto ●" else "Auto"
+        chipHd.active = store.hd
+        chipHd.text = if (store.hd) "HD" else "SD"
     }
 
     // ------------------------------------------------------------- Rejilla
@@ -187,6 +219,7 @@ class MainActivity : Activity() {
         stopTiles()
         content.removeAllViews()
         wall = null
+        content.setPadding(dp(8), dp(2), dp(8), dp(8))
 
         val size = store.gridSize
         val cols = if (size == 4) 2 else 4
@@ -195,15 +228,7 @@ class MainActivity : Activity() {
         if (page >= pages) page = 0
 
         if (cameras.isEmpty()) {
-            val hint = TextView(this)
-            hint.text = "No hay cámaras todavía.\n\nPulsa ARRIBA en el mando y elige «Cámaras» → «Añadir cámara» o «Añadir NVR / DVR»."
-            hint.setTextColor(Color.WHITE)
-            hint.textSize = 20f
-            hint.gravity = Gravity.CENTER
-            content.addView(
-                hint,
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            )
+            showEmptyState()
             pageLabel.text = "0 cámaras"
             return
         }
@@ -215,7 +240,7 @@ class MainActivity : Activity() {
         val to = minOf(cameras.size, from + size)
         for (i in from until to) {
             val cam = cameras[i]
-            val tile = TileView(this, cam, store.hd)
+            val tile = TileView(this, cam, store.hd, false)
             tile.setOnClickListener {
                 showFull(cameras.indexOfFirst { it.id == cam.id })
             }
@@ -228,20 +253,54 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         for (t in tiles) t.start()
-        pageLabel.text = "Pág " + (page + 1) + "/" + pages + " · " + cameras.size + " cám."
+        pageLabel.text = (page + 1).toString() + " / " + pages + "   ·   " + cameras.size + " cámaras"
         if (bar.visibility != View.VISIBLE) tiles.firstOrNull()?.requestFocus()
+    }
+
+    private fun showEmptyState() {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.gravity = Gravity.CENTER
+
+        val title = TextView(this)
+        title.text = "Aún no hay cámaras"
+        title.setTextColor(Color.WHITE)
+        title.textSize = 28f
+        title.typeface = Typeface.DEFAULT_BOLD
+        title.gravity = Gravity.CENTER
+
+        val sub = TextView(this)
+        sub.text = "Añade tu NVR / DVR con todos sus canales, o una cámara suelta\n(Dahua, Hikvision, ONVIF o URL RTSP)."
+        sub.setTextColor(muted)
+        sub.textSize = 16f
+        sub.gravity = Gravity.CENTER
+        sub.setPadding(0, dp(10), 0, dp(24))
+
+        val add = chip("Añadir cámaras") { dialogs.showList() }
+        add.filled = true
+
+        box.addView(title)
+        box.addView(sub)
+        box.addView(add, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        content.addView(
+            box,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        add.requestFocus()
     }
 
     // -------------------------------------------------------- Pantalla completa
 
     private fun showFull(index: Int) {
         if (cameras.isEmpty() || index < 0) return
+        val first = fullIndex < 0
         val n = cameras.size
         fullIndex = ((index % n) + n) % n
         stopTiles()
         content.removeAllViews()
         wall = null
-        val tile = TileView(this, cameras[fullIndex], true)
+        content.setPadding(0, 0, 0, 0)
+        val tile = TileView(this, cameras[fullIndex], true, true)
         tile.isFocusable = false
         tile.isClickable = false
         tile.setAudio(true)
@@ -251,8 +310,44 @@ class MainActivity : Activity() {
         )
         tiles.add(tile)
         tile.start()
+        addFullOverlay(fullIndex, first)
         handler.removeCallbacks(hideBarRunnable)
         bar.visibility = View.GONE
+    }
+
+    private fun pill(text: String, size: Float, color: Int): TextView {
+        val tv = TextView(this)
+        tv.text = text
+        tv.setTextColor(color)
+        tv.textSize = size
+        val bg = GradientDrawable()
+        bg.setColor(Color.parseColor("#B3000000"))
+        bg.cornerRadius = dp(22).toFloat()
+        tv.background = bg
+        tv.setPadding(dp(18), dp(8), dp(18), dp(8))
+        return tv
+    }
+
+    private fun fade(v: View, delay: Long) {
+        v.animate().cancel()
+        v.alpha = 1f
+        v.animate().alpha(0f).setStartDelay(delay).setDuration(500L).start()
+    }
+
+    private fun addFullOverlay(index: Int, first: Boolean) {
+        val info = pill("●  " + cameras[index].name + "     " + (index + 1) + " / " + cameras.size, 16f, Color.WHITE)
+        val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START)
+        lp.setMargins(dp(24), dp(20), 0, 0)
+        content.addView(info, lp)
+        fade(info, 3500L)
+
+        if (first) {
+            val hint = pill("‹ ›  cambiar de cámara          OK  volver a la cuadrícula", 14f, Color.parseColor("#C9CED6"))
+            val hlp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            hlp.setMargins(0, 0, 0, dp(24))
+            content.addView(hint, hlp)
+            fade(hint, 5000L)
+        }
     }
 
     private fun exitFull() {
@@ -270,7 +365,7 @@ class MainActivity : Activity() {
 
     private fun showBar() {
         bar.visibility = View.VISIBLE
-        btn4.requestFocus()
+        chip4.requestFocus()
         kickBar()
     }
 

@@ -2,14 +2,20 @@ package com.fonsi.tvvms
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -18,18 +24,24 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
-/** Un recuadro con una cámara: reproduce su flujo RTSP, muestra el nombre y reconecta solo si se cae. */
+/** Un recuadro con una cámara: reproduce su flujo RTSP, muestra nombre y estado, y reconecta solo si se cae. */
 class TileView(
     context: Context,
     val camera: Camera,
-    private val useMainStream: Boolean
+    private val useMainStream: Boolean,
+    private val fullscreen: Boolean
 ) : FrameLayout(context) {
 
-    private val playerView = PlayerView(context)
-    private val nameLabel = TextView(context)
+    private val amber = Color.parseColor("#F5A524")
+    private val green = Color.parseColor("#3DD68C")
+    private val red = Color.parseColor("#E5484D")
+    private val gold = Color.parseColor("#D4AF37")
+
+    private val playerView: PlayerView =
+        LayoutInflater.from(context).inflate(R.layout.player_view, this, false) as PlayerView
+    private val dotShape = GradientDrawable()
     private val status = TextView(context)
     private var player: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -41,51 +53,101 @@ class TileView(
     }
 
     init {
-        setBackgroundColor(Color.BLACK)
+        val radius = if (fullscreen) 0f else dp(14).toFloat()
+        val bg = GradientDrawable()
+        bg.setColor(Color.parseColor("#0F1319"))
+        bg.cornerRadius = radius
+        background = bg
+        clipToOutline = true
+        outlineProvider = ViewOutlineProvider.BACKGROUND
+
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         isFocusable = true
         isClickable = true
 
-        playerView.useController = false
-        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-        playerView.isFocusable = false
-        addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        addView(playerView)
 
-        nameLabel.text = camera.name
-        nameLabel.setTextColor(Color.WHITE)
-        nameLabel.textSize = 12f
-        nameLabel.setBackgroundColor(Color.parseColor("#99000000"))
-        nameLabel.setPadding(dp(6), dp(2), dp(6), dp(2))
-        addView(
-            nameLabel,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START)
-        )
+        if (!fullscreen) {
+            val scrim = View(context)
+            scrim.background = GradientDrawable(
+                GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(Color.parseColor("#D9000000"), Color.TRANSPARENT)
+            )
+            addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64), Gravity.BOTTOM))
 
-        status.setTextColor(Color.parseColor("#D4AF37"))
-        status.textSize = 14f
-        status.setBackgroundColor(Color.parseColor("#99000000"))
-        status.setPadding(dp(8), dp(4), dp(8), dp(4))
-        addView(
-            status,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-        )
+            val row = LinearLayout(context)
+            row.orientation = LinearLayout.HORIZONTAL
+            row.gravity = Gravity.CENTER_VERTICAL
+            row.setPadding(dp(12), 0, dp(12), dp(10))
+            dotShape.shape = GradientDrawable.OVAL
+            dotShape.setColor(amber)
+            val dot = View(context)
+            dot.background = dotShape
+            val dotLp = LinearLayout.LayoutParams(dp(8), dp(8))
+            dotLp.rightMargin = dp(8)
+            row.addView(dot, dotLp)
+            val name = TextView(context)
+            name.text = camera.name
+            name.setTextColor(Color.parseColor("#F2F4F7"))
+            name.textSize = 13f
+            name.typeface = Typeface.DEFAULT_BOLD
+            name.maxLines = 1
+            name.ellipsize = TextUtils.TruncateAt.END
+            name.setShadowLayer(4f, 0f, 1f, Color.BLACK)
+            row.addView(name)
+            addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
 
-        foreground = focusBorder()
+            val badge = TextView(context)
+            badge.text = if (useMainStream) "HD" else "SD"
+            badge.textSize = 10f
+            badge.typeface = Typeface.DEFAULT_BOLD
+            badge.setTextColor(Color.parseColor("#C9CED6"))
+            val badgeBg = GradientDrawable()
+            badgeBg.setColor(Color.parseColor("#80000000"))
+            badgeBg.cornerRadius = dp(8).toFloat()
+            badge.background = badgeBg
+            badge.setPadding(dp(7), dp(2), dp(7), dp(2))
+            val badgeLp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
+            badgeLp.setMargins(0, dp(8), dp(8), 0)
+            addView(badge, badgeLp)
+        }
+
+        status.setTextColor(Color.parseColor("#D5DAE1"))
+        status.textSize = if (fullscreen) 18f else 13f
+        status.gravity = Gravity.CENTER
+        val statusBg = GradientDrawable()
+        statusBg.setColor(Color.parseColor("#B3000000"))
+        statusBg.cornerRadius = dp(12).toFloat()
+        status.background = statusBg
+        status.setPadding(dp(14), dp(8), dp(14), dp(8))
+        addView(status, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+
+        foreground = focusBorder(radius)
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun focusBorder(): StateListDrawable {
+    private fun focusBorder(radius: Float): StateListDrawable {
         val focused = GradientDrawable()
-        focused.setStroke(dp(3), Color.parseColor("#D4AF37"))
+        focused.setStroke(dp(3), gold)
         focused.setColor(Color.TRANSPARENT)
+        focused.cornerRadius = radius
         val normal = GradientDrawable()
-        normal.setStroke(dp(1), Color.parseColor("#2A2F38"))
+        normal.setStroke(dp(1), Color.parseColor("#1F2630"))
         normal.setColor(Color.TRANSPARENT)
+        normal.cornerRadius = radius
         val sl = StateListDrawable()
         sl.addState(intArrayOf(android.R.attr.state_focused), focused)
         sl.addState(intArrayOf(), normal)
         return sl
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        if (fullscreen) return
+        val s = if (gainFocus) 1.03f else 1f
+        val z = if (gainFocus) dp(12).toFloat() else 0f
+        animate().scaleX(s).scaleY(s).translationZ(z).setDuration(130L).start()
     }
 
     fun setAudio(on: Boolean) {
@@ -115,10 +177,10 @@ class TileView(
         releasePlayer()
         val url = StreamUrls.url(camera, useMainStream)
         if (url.isBlank()) {
-            showStatus("Sin URL de vídeo")
+            showStatus("Sin URL de vídeo", true)
             return
         }
-        showStatus(if (attempts == 0) "Conectando…" else "Reconectando…")
+        showStatus(if (attempts == 0) "Conectando…" else "Reconectando…", false)
 
         val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         val loadControl = DefaultLoadControl.Builder()
@@ -132,11 +194,15 @@ class TileView(
             override fun onRenderedFirstFrame() {
                 attempts = 0
                 status.visibility = View.GONE
+                dotShape.setColor(green)
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 val detail = (error.cause?.message ?: error.message ?: "").replace("\n", " ").take(70)
-                showStatus("Sin señal\n" + error.errorCodeName + (if (detail.isEmpty()) "" else "\n" + detail))
+                showStatus(
+                    "Sin señal\n" + error.errorCodeName + (if (detail.isEmpty()) "" else "\n" + detail),
+                    true
+                )
                 scheduleRetry()
             }
         })
@@ -160,8 +226,10 @@ class TileView(
         handler.postDelayed(retryRunnable, delay)
     }
 
-    private fun showStatus(text: String) {
+    private fun showStatus(text: String, error: Boolean) {
         status.text = text
+        status.setTextColor(if (error) gold else Color.parseColor("#D5DAE1"))
         status.visibility = View.VISIBLE
+        dotShape.setColor(if (error) red else amber)
     }
 }
