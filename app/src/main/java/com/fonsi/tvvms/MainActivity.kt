@@ -291,8 +291,9 @@ class MainActivity : Activity() {
         content.setPadding(dp(8), dp(2), dp(8), dp(8))
 
         val size = store.gridSize
-        val cols = if (size == 4) 2 else 4
-        val rows = if (size == 16) 4 else 2
+        // 4 → 2x2, 8 → 3x3 (8 cámaras y un hueco), 16 → 4x4: así cada cuadro es 16:9 y la imagen lo llena
+        val cols = when (size) { 4 -> 2; 8 -> 3; else -> 4 }
+        val rows = when (size) { 4 -> 2; 8 -> 3; else -> 4 }
         val pages = pageCount()
         if (page >= pages) page = 0
 
