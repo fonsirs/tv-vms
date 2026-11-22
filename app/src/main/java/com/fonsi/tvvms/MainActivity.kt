@@ -21,7 +21,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private val gold = Color.parseColor("#D4AF37")
+    private val gold = Color.parseColor("#C9A04B")
     private val muted = Color.parseColor("#8A93A0")
     private val bgColor = Color.parseColor("#0B0D10")
     private val handler = Handler(Looper.getMainLooper())

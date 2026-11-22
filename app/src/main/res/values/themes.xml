@@ -2,14 +2,14 @@
 <resources>
     <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:colorAccent">#D4AF37</item>
-        <item name="android:colorControlActivated">#D4AF37</item>
+        <item name="android:colorAccent">#C9A04B</item>
+        <item name="android:colorControlActivated">#C9A04B</item>
         <item name="android:alertDialogTheme">@style/DialogTheme</item>
     </style>
 
     <style name="DialogTheme" parent="android:Theme.Material.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dialog_bg</item>
-        <item name="android:colorAccent">#D4AF37</item>
-        <item name="android:colorControlActivated">#D4AF37</item>
+        <item name="android:colorAccent">#C9A04B</item>
+        <item name="android:colorControlActivated">#C9A04B</item>
     </style>
 </resources>

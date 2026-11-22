@@ -11,7 +11,7 @@ import android.widget.TextView
 /** Botón redondeado para mando: dorado al tener el foco, borde dorado si está activo. */
 class Chip(context: Context, label: String) : TextView(context) {
 
-    private val gold = Color.parseColor("#D4AF37")
+    private val gold = Color.parseColor("#C9A04B")
     var filled: Boolean = false
         set(value) {
             field = value
@@ -48,7 +48,7 @@ class Chip(context: Context, label: String) : TextView(context) {
             bg.setStroke(dp(2), gold)
             setTextColor(gold)
         } else if (filled) {
-            bg.setColor(Color.parseColor("#2E2711"))
+            bg.setColor(Color.parseColor("#2A2216"))
             bg.setStroke(dp(1), gold)
             setTextColor(gold)
         } else {

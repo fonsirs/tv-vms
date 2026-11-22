@@ -37,7 +37,7 @@ class TileView(
     private val amber = Color.parseColor("#F5A524")
     private val green = Color.parseColor("#3DD68C")
     private val red = Color.parseColor("#E5484D")
-    private val gold = Color.parseColor("#D4AF37")
+    private val gold = Color.parseColor("#C9A04B")
 
     private val playerView: PlayerView =
         LayoutInflater.from(context).inflate(R.layout.player_view, this, false) as PlayerView
