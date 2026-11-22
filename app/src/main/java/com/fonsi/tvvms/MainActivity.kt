@@ -25,6 +25,8 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : Activity() {
+    private val MAX_HD_TILES = 2
+
 
     private val gold = Color.parseColor("#C9A04B")
     private val muted = Color.parseColor("#8A93A0")
@@ -309,7 +311,8 @@ class MainActivity : Activity() {
         val to = minOf(cameras.size, from + size)
         for (i in from until to) {
             val cam = cameras[i]
-            val tile = TileView(this, cam, store.hd, false)
+            val hdTile = store.hd && (i - from) < MAX_HD_TILES
+            val tile = TileView(this, cam, hdTile, false)
             tile.setOnClickListener {
                 showFull(cameras.indexOfFirst { it.id == cam.id })
             }
@@ -321,7 +324,12 @@ class MainActivity : Activity() {
             w,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
-        for (t in tiles) t.start()
+        val starting = ArrayList<TileView>(tiles)
+        for ((n, t) in starting.withIndex()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (t.isAttachedToWindow) t.start()
+            }, n * 250L)
+        }
         pageLabel.text = (page + 1).toString() + " / " + pages + "   ·   " + cameras.size + " cámaras"
         if (bar.visibility != View.VISIBLE) tiles.firstOrNull()?.requestFocus()
     }
