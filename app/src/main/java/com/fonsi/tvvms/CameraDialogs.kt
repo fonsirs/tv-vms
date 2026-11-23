@@ -29,6 +29,12 @@ class CameraDialogs(
         fun text(): String = edit.text.toString().trim()
     }
 
+    private fun validHost(h: String): Boolean =
+        h.length <= 253 && Regex("^[A-Za-z0-9._-]+$").matches(h)
+
+    /** Evita mostrar diálogos o tocar la pantalla si la actividad ya se cerró. */
+    private fun alive(): Boolean = !act.isFinishing && !act.isDestroyed
+
     private fun dp(v: Int): Int = (v * act.resources.displayMetrics.density).toInt()
 
     private fun toast(msg: String) {
@@ -117,12 +123,13 @@ class CameraDialogs(
         Thread {
             val res = try {
                 LanScan.scan(act, prefix, { cancelled.get() }) { pct ->
-                    act.runOnUiThread { progress.setMessage(pct.toString() + " %") }
+                    act.runOnUiThread { if (alive()) progress.setMessage(pct.toString() + " %") }
                 }
             } catch (e: Exception) {
                 emptyList()
             }
             act.runOnUiThread {
+                if (!alive()) return@runOnUiThread
                 if (progress.isShowing) progress.dismiss()
                 if (!cancelled.get()) showScanResults(res, onPick)
             }
@@ -290,6 +297,10 @@ class CameraDialogs(
                     toast("Falta la IP")
                     return@setOnClickListener
                 }
+                if (brand != Brand.RTSP && !validHost(host.text())) {
+                    toast("La IP o dirección solo puede tener letras, números, puntos y guiones")
+                    return@setOnClickListener
+                }
                 if (brand == Brand.RTSP && mainUrl.text().isEmpty()) {
                     toast("Falta la URL RTSP principal")
                     return@setOnClickListener
@@ -333,6 +344,7 @@ class CameraDialogs(
         Thread {
             val result = runCatching { Onvif.resolve(cam.host, cam.onvifPort, cam.user, cam.pass) }
             act.runOnUiThread {
+                if (!alive()) return@runOnUiThread
                 progress.dismiss()
                 val streams = result.getOrNull()
                 if (streams != null) {
@@ -394,6 +406,10 @@ class CameraDialogs(
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 if (host.text().isEmpty()) {
                     toast("Falta la IP")
+                    return@setOnClickListener
+                }
+                if (!validHost(host.text())) {
+                    toast("La IP o dirección solo puede tener letras, números, puntos y guiones")
                     return@setOnClickListener
                 }
                 val first = from.text().toIntOrNull() ?: 1

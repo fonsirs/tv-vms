@@ -149,7 +149,7 @@ object Onvif {
             conn.outputStream.use { it.write(envelope.toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+            val text = stream?.use { readLimited(it) } ?: ""
             if (code !in 200..299) {
                 throw IOException("HTTP $code" + faultReason(text))
             }
@@ -157,6 +157,20 @@ object Onvif {
         } finally {
             conn.disconnect()
         }
+    }
+
+    /** Lee como mucho 1 MB: una respuesta mayor no es de una cámara normal. */
+    private fun readLimited(input: java.io.InputStream): String {
+        val max = 1024 * 1024
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            if (out.size() + n > max) throw IOException("Respuesta demasiado grande")
+            out.write(buf, 0, n)
+        }
+        return String(out.toByteArray(), Charsets.UTF_8)
     }
 
     private fun faultReason(text: String): String {
@@ -168,6 +182,19 @@ object Onvif {
     private fun parse(xml: String): Document {
         val f = DocumentBuilderFactory.newInstance()
         f.isNamespaceAware = true
+        // Endurecimiento contra XML malicioso (DTD / entidades externas); si el sistema no lo admite, se ignora.
+        for ((feat, v) in listOf(
+            "http://apache.org/xml/features/disallow-doctype-decl" to true,
+            "http://xml.org/sax/features/external-general-entities" to false,
+            "http://xml.org/sax/features/external-parameter-entities" to false
+        )) {
+            try {
+                f.setFeature(feat, v)
+            } catch (e: Exception) {
+                // no soportado en este Android
+            }
+        }
+        f.isExpandEntityReferences = false
         return f.newDocumentBuilder().parse(InputSource(StringReader(xml)))
     }
 

@@ -8,14 +8,14 @@ val ksPath: String = System.getenv("KS_PATH") ?: ""
 
 android {
     namespace = "com.fonsi.tvvms"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.fonsi.tvvms"
         minSdk = 23
-        targetSdk = 34
-        versionCode = 5
-        versionName = "1.4"
+        targetSdk = 35
+        versionCode = 6
+        versionName = "1.5"
     }
 
     signingConfigs {
@@ -56,7 +56,7 @@ android {
 }
 
 dependencies {
-    val media3 = "1.4.1"
+    val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-rtsp:$media3")
     implementation("androidx.media3:media3-ui:$media3")
