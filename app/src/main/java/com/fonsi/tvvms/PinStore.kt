@@ -1,6 +1,7 @@
 package com.fonsi.tvvms
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Base64
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -27,6 +28,7 @@ class PinStore(context: Context) {
             .putString("hash", Base64.encodeToString(hash(pin, salt), Base64.NO_WRAP))
             .putInt("fails", 0)
             .putLong("lockUntil", 0L)
+            .putLong("lockMs", 0L)
             .apply()
     }
 
@@ -36,7 +38,14 @@ class PinStore(context: Context) {
 
     /** Segundos que faltan para poder volver a intentarlo (0 si no está bloqueado). */
     fun lockedSeconds(): Long {
-        val left = prefs.getLong("lockUntil", 0L) - System.currentTimeMillis()
+        // Se mide con el reloj interno (no cambia si alguien modifica la hora de la TV);
+        // solo si la TV se ha reiniciado se usa la hora normal como respaldo.
+        val ms = prefs.getLong("lockMs", 0L)
+        if (ms <= 0L) return 0L
+        val setAt = prefs.getLong("lockElapsed", 0L)
+        val nowE = SystemClock.elapsedRealtime()
+        val left = if (nowE >= setAt) ms - (nowE - setAt)
+        else prefs.getLong("lockUntil", 0L) - System.currentTimeMillis()
         return if (left > 0) (left + 999) / 1000 else 0L
     }
 
@@ -47,16 +56,21 @@ class PinStore(context: Context) {
         val salt = Base64.decode(saltStr, Base64.NO_WRAP)
         val expected = Base64.decode(hashStr, Base64.NO_WRAP)
         if (MessageDigest.isEqual(expected, hash(pin, salt))) {
-            prefs.edit().putInt("fails", 0).putLong("lockUntil", 0L).apply()
+            prefs.edit().putInt("fails", 0).putLong("lockUntil", 0L).putLong("lockMs", 0L).apply()
             return true
         }
         val fails = prefs.getInt("fails", 0) + 1
-        var lockUntil = 0L
+        var lockMs = 0L
         if (fails >= 5) {
             val step = minOf(fails - 5, 6)
-            lockUntil = System.currentTimeMillis() + (30000L shl step)
+            lockMs = 30000L shl step
         }
-        prefs.edit().putInt("fails", fails).putLong("lockUntil", lockUntil).apply()
+        prefs.edit()
+            .putInt("fails", fails)
+            .putLong("lockMs", lockMs)
+            .putLong("lockElapsed", SystemClock.elapsedRealtime())
+            .putLong("lockUntil", if (lockMs > 0L) System.currentTimeMillis() + lockMs else 0L)
+            .apply()
         return false
     }
 }
