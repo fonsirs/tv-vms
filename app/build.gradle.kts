@@ -14,8 +14,8 @@ android {
         applicationId = "com.fonsi.tvvms"
         minSdk = 23
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "1.7"
     }
 
     signingConfigs {
@@ -58,6 +58,13 @@ android {
 dependencies {
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
-    implementation("androidx.media3:media3-exoplayer-rtsp:$media3")
+    // El módulo RTSP de Media3 va incluido en el código (androidx/media3/exoplayer/rtsp) con un parche
+    // para cámaras que no envían sprop-parameter-sets. Necesita estas librerías:
+    implementation("androidx.media3:media3-common:$media3")
+    implementation("androidx.media3:media3-container:$media3")
+    implementation("androidx.media3:media3-datasource:$media3")
+    implementation("androidx.media3:media3-extractor:$media3")
+    compileOnly("org.checkerframework:checker-qual:3.43.0")
+    compileOnly("com.google.errorprone:error_prone_annotations:2.31.0")
     implementation("androidx.media3:media3-ui:$media3")
 }
