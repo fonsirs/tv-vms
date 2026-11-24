@@ -95,7 +95,7 @@ object Onvif {
     }
 
     /** Diferencia de reloj cámara - móvil, porque muchas cámaras rechazan el login WS-Security si la hora no cuadra. */
-    private fun timeOffset(deviceUrl: String): Long {
+    internal fun timeOffset(deviceUrl: String): Long {
         return try {
             val doc = parse(soap(deviceUrl, "", "<tds:GetSystemDateAndTime/>"))
             val utc = doc.getElementsByTagNameNS("*", "UTCDateTime").item(0) as Element
@@ -109,7 +109,7 @@ object Onvif {
         }
     }
 
-    private fun security(user: String, pass: String, offset: Long): String {
+    internal fun security(user: String, pass: String, offset: Long): String {
         if (user.isBlank()) return ""
         val nonce = ByteArray(16)
         SecureRandom().nextBytes(nonce)
@@ -132,7 +132,7 @@ object Onvif {
             nonceB64 + "</wsse:Nonce><wsu:Created>" + created + "</wsu:Created></wsse:UsernameToken></wsse:Security>"
     }
 
-    private fun soap(url: String, header: String, body: String): String {
+    internal fun soap(url: String, header: String, body: String): String {
         val envelope = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
             "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\"" +
             " xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\"" +
@@ -179,7 +179,7 @@ object Onvif {
         return if (reason.isEmpty()) "" else " ($reason)"
     }
 
-    private fun parse(xml: String): Document {
+    internal fun parse(xml: String): Document {
         val f = DocumentBuilderFactory.newInstance()
         f.isNamespaceAware = true
         // Endurecimiento contra XML malicioso (DTD / entidades externas); si el sistema no lo admite, se ignora.
@@ -198,11 +198,11 @@ object Onvif {
         return f.newDocumentBuilder().parse(InputSource(StringReader(xml)))
     }
 
-    private fun firstText(doc: Document, localName: String): String? {
+    internal fun firstText(doc: Document, localName: String): String? {
         val text = doc.getElementsByTagNameNS("*", localName).item(0)?.textContent?.trim()
         return if (text.isNullOrEmpty()) null else text
     }
 
-    private fun esc(s: String): String =
+    internal fun esc(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 }

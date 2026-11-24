@@ -107,4 +107,17 @@ class CameraStore(context: Context) {
         set(v) {
             prefs.edit().putBoolean("auto", v).apply()
         }
+
+    /** Filtro del panel de eventos: 0 = todo, 1 = personas, 2 = vehículos. */
+    var eventFilter: Int
+        get() = prefs.getInt("eventFilter", 0)
+        set(v) {
+            prefs.edit().putInt("eventFilter", v).apply()
+        }
+
+    var eventsOpen: Boolean
+        get() = prefs.getBoolean("eventsOpen", false)
+        set(v) {
+            prefs.edit().putBoolean("eventsOpen", v).apply()
+        }
 }

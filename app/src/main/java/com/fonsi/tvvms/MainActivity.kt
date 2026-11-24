@@ -45,6 +45,10 @@ class MainActivity : Activity() {
     private lateinit var chip16: Chip
     private lateinit var chipAuto: Chip
     private lateinit var chipHd: Chip
+    private lateinit var chipEvents: Chip
+    private lateinit var panel: EventPanel
+    private var hub: EventHub? = null
+    private var unseen = 0
 
     private var cameras: List<Camera> = emptyList()
     private var wall: WallLayout? = null
@@ -96,23 +100,27 @@ class MainActivity : Activity() {
         stopTiles()
         pinDialog?.dismiss()
         pinDialog = null
+        stopEvents()
     }
 
     override fun onStop() {
         super.onStop()
         handler.removeCallbacksAndMessages(null)
         stopTiles()
+        stopEvents()
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         stopTiles()
+        stopEvents()
         super.onDestroy()
     }
 
     private fun startUi() {
         cameras = store.load()
         fullIndex = -1
+        startEvents()
         renderGrid()
         showBar()
         restartAuto()
@@ -123,6 +131,7 @@ class MainActivity : Activity() {
 
     private fun showLock() {
         stopTiles()
+        stopEvents()
         content.removeAllViews()
         bar.visibility = View.GONE
 
@@ -187,12 +196,17 @@ class MainActivity : Activity() {
         val rootLayout = LinearLayout(this)
         rootLayout.orientation = LinearLayout.VERTICAL
         rootLayout.setBackgroundColor(bgColor)
+        rootLayout.clipChildren = false
+        rootLayout.clipToPadding = false
 
         bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER_VERTICAL
         bar.setBackgroundColor(bgColor)
-        bar.setPadding(dp(22), dp(10), dp(22), dp(8))
+        bar.setPadding(dp(22), dp(12), dp(22), dp(10))
+        // el botón enfocado crece un poco: que no se recorte arriba ni abajo
+        bar.clipToPadding = false
+        bar.clipChildren = false
 
         val brand = ImageView(this)
         brand.setImageResource(R.drawable.logo_bar)
@@ -221,6 +235,7 @@ class MainActivity : Activity() {
             updateBar()
             renderGrid()
         }
+        chipEvents = chip("Eventos") { toggleEvents() }
         val camsChip = chip("Cámaras") { dialogs.showList() }
         camsChip.filled = true
 
@@ -239,6 +254,7 @@ class MainActivity : Activity() {
         addToBar(next, 0)
         bar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         addToBar(chipAuto)
+        addToBar(chipEvents)
         addToBar(camsChip)
         addToBar(clock, 20)
 
@@ -248,7 +264,20 @@ class MainActivity : Activity() {
             bar,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         )
-        rootLayout.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        panel = EventPanel(this)
+        panel.onOpen = { cam ->
+            val i = cameras.indexOfFirst { it.id == cam.id }
+            if (i >= 0) showFull(i)
+        }
+        panel.applyFilter(store.eventFilter)
+        panel.onFilterChange = { f -> store.eventFilter = f }
+        panel.visibility = if (store.eventsOpen) View.VISIBLE else View.GONE
+        val body = LinearLayout(this)
+        body.orientation = LinearLayout.HORIZONTAL
+        body.addView(content, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        val panelW = (resources.displayMetrics.widthPixels * 0.22f).toInt().coerceIn(dp(230), dp(290))
+        body.addView(panel, LinearLayout.LayoutParams(panelW, ViewGroup.LayoutParams.MATCH_PARENT))
+        rootLayout.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(rootLayout)
         updateBar()
     }
@@ -262,6 +291,8 @@ class MainActivity : Activity() {
         chipAuto.text = if (store.auto) "Auto ●" else "Auto"
         chipHd.active = store.hd
         chipHd.text = if (store.hd) "HD" else "SD"
+        chipEvents.active = store.eventsOpen
+        chipEvents.text = if (unseen > 0 && !store.eventsOpen) "Eventos ($unseen)" else "Eventos"
     }
 
     // ------------------------------------------------------------- Rejilla
@@ -288,7 +319,73 @@ class MainActivity : Activity() {
     private fun onCamerasChanged() {
         cameras = store.load()
         fullIndex = -1
+        startEvents()
         renderGrid()
+    }
+
+    // ------------------------------------------------------------- Eventos
+
+    private fun ui(block: () -> Unit) {
+        if (isFinishing || isDestroyed) return
+        runOnUiThread { if (!isFinishing && !isDestroyed) block() }
+    }
+
+    private fun startEvents() {
+        stopEvents()
+        panel.clearStatus()
+        val h = EventHub(
+            onEvent = { ev ->
+                ui {
+                    panel.add(ev)
+                    if (panel.matches(ev)) {
+                        tiles.firstOrNull { it.camera.id == ev.camera.id }?.flash(ev.kind.color, ev.type)
+                        if (!store.eventsOpen) {
+                            unseen++
+                            updateBar()
+                        }
+                    }
+                }
+            },
+            onThumb = { ev -> ui { panel.refreshThumb(ev) } },
+            onStatus = { key, label, text -> ui { panel.setStatus(key, label, text) } },
+            grab = { cam -> grabLive(cam) }
+        )
+        hub = h
+        // la red no se toca desde el hilo principal
+        val list = cameras
+        Thread { h.start(list) }.start()
+    }
+
+    /** Se llama desde un hilo de fondo: pide al hilo principal una captura del recuadro de esa cámara. */
+    private fun grabLive(cam: Camera): android.graphics.Bitmap? {
+        if (isFinishing || isDestroyed) return null
+        var result: android.graphics.Bitmap? = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+        runOnUiThread {
+            try {
+                result = tiles.firstOrNull { it.camera.id == cam.id }?.grabFrame()
+            } catch (e: Exception) {
+                result = null
+            } finally {
+                latch.countDown()
+            }
+        }
+        latch.await(1500L, java.util.concurrent.TimeUnit.MILLISECONDS)
+        return result
+    }
+
+    private fun stopEvents() {
+        val h = hub ?: return
+        hub = null
+        Thread { h.stop() }.start()
+    }
+
+    private fun toggleEvents() {
+        store.eventsOpen = !store.eventsOpen
+        panel.visibility = if (store.eventsOpen) View.VISIBLE else View.GONE
+        if (store.eventsOpen) unseen = 0
+        updateBar()
+        kickBar()
     }
 
     private fun stopTiles() {
@@ -478,6 +575,15 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------------- Mando
 
+    private fun isInPanel(v: View): Boolean {
+        var p: android.view.ViewParent? = v.parent
+        while (p != null) {
+            if (p === panel) return true
+            p = p.parent
+        }
+        return false
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (pinStore.isSet() && !unlocked) return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_DOWN) {
@@ -498,6 +604,11 @@ class MainActivity : Activity() {
                     }
                 }
             } else {
+                val inPanel = currentFocus?.let { f -> isInPanel(f) } ?: false
+                if (inPanel && event.keyCode == KeyEvent.KEYCODE_DPAD_UP && currentFocus?.focusSearch(View.FOCUS_UP) == null) {
+                    showBar()
+                    return true
+                }
                 if (bar.visibility != View.VISIBLE) {
                     val focus = currentFocus
                     val idx = tiles.indexOfFirst { it === focus }

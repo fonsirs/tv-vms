@@ -27,11 +27,11 @@ class Chip(context: Context, label: String) : TextView(context) {
         isFocusable = true
         isClickable = true
         text = label
-        textSize = 15f
+        textSize = 14f
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        minWidth = dp(46)
-        setPadding(dp(16), dp(8), dp(16), dp(8))
+        minWidth = dp(42)
+        setPadding(dp(14), dp(6), dp(14), dp(6))
         refresh()
     }
 
@@ -62,6 +62,7 @@ class Chip(context: Context, label: String) : TextView(context) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         refresh()
         val s = if (gainFocus) 1.08f else 1f
-        animate().scaleX(s).scaleY(s).setDuration(110L).start()
+        scaleX = s
+        scaleY = s
     }
 }

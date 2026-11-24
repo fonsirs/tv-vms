@@ -1,6 +1,7 @@
 package com.fonsi.tvvms
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -11,6 +12,7 @@ import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
@@ -192,6 +194,57 @@ class TileView(
     }
 
     private var gotFrame = false
+    private var flashBorder: View? = null
+    private var flashLabel: TextView? = null
+    private val flashOff = Runnable {
+        flashBorder?.animate()?.alpha(0f)?.setDuration(400L)?.start()
+        flashLabel?.animate()?.alpha(0f)?.setDuration(400L)?.start()
+    }
+
+    /** Resalta el recuadro con un borde de color y el tipo de evento unos segundos (no en pantalla completa). */
+    fun flash(color: Int, text: String) {
+        if (fullscreen) return
+        val border = flashBorder ?: View(context).also {
+            flashBorder = it
+            addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        val d = GradientDrawable()
+        d.setColor(Color.TRANSPARENT)
+        d.cornerRadius = dp(14).toFloat()
+        d.setStroke(dp(4), color)
+        border.background = d
+        val label = flashLabel ?: TextView(context).also {
+            flashLabel = it
+            it.textSize = 12f
+            it.typeface = Typeface.DEFAULT_BOLD
+            it.setTextColor(Color.parseColor("#14181F"))
+            it.setPadding(dp(10), dp(3), dp(10), dp(3))
+            val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START)
+            lp.setMargins(dp(10), dp(10), 0, 0)
+            addView(it, lp)
+        }
+        val pill = GradientDrawable()
+        pill.setColor(color)
+        pill.cornerRadius = dp(10).toFloat()
+        label.background = pill
+        label.text = text
+        border.animate().cancel()
+        label.animate().cancel()
+        border.alpha = 1f
+        label.alpha = 1f
+        handler.removeCallbacks(flashOff)
+        handler.postDelayed(flashOff, 4000L)
+    }
+
+    /** Foto del vídeo que se está viendo ahora (para las miniaturas de eventos); null si aún no hay imagen. */
+    fun grabFrame(): Bitmap? {
+        if (!gotFrame) return null
+        val tv = playerView.videoSurfaceView as? TextureView ?: return null
+        if (!tv.isAvailable || tv.width <= 0 || tv.height <= 0) return null
+        val w = 480
+        val h = maxOf(2, w * tv.height / tv.width)
+        return try { tv.getBitmap(w, h) } catch (e: Exception) { null }
+    }
     private val watchdog = Runnable {
         if (active && !gotFrame) {
             attempts++
