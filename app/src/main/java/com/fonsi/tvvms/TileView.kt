@@ -52,7 +52,68 @@ class TileView(
     private val status = TextView(context)
     private val diag = TextView(context)
     private var decoderName = ""
-    private val hideDiag = Runnable { diag.visibility = View.GONE }
+    private var infoOn = false
+    private var lastRendered = 0
+    private var lastRenderedAt = 0L
+    private var fps = -1f
+    private var dropped = 0
+    private val infoTick = object : Runnable {
+        override fun run() {
+            measureFps()
+            refreshInfo()
+            if (infoOn && active) handler.postDelayed(this, 2000L)
+        }
+    }
+
+    /** Muestra u oculta el rótulo con los datos técnicos del vídeo (botón "i" de la barra). */
+    fun setInfo(on: Boolean) {
+        infoOn = on
+        handler.removeCallbacks(infoTick)
+        if (on && active) handler.post(infoTick)
+        refreshInfo()
+    }
+
+    private fun measureFps() {
+        val c = player?.videoDecoderCounters ?: return
+        c.ensureUpdated()
+        val now = android.os.SystemClock.elapsedRealtime()
+        val rendered = c.renderedOutputBufferCount
+        if (lastRenderedAt != 0L && now > lastRenderedAt && rendered >= lastRendered) {
+            fps = (rendered - lastRendered) * 1000f / (now - lastRenderedAt)
+        }
+        lastRendered = rendered
+        lastRenderedAt = now
+        dropped = c.droppedBufferCount
+    }
+
+    private fun refreshInfo() {
+        if (!infoOn) {
+            diag.visibility = View.GONE
+            return
+        }
+        val vf = player?.videoFormat
+        if (vf == null || !gotFrame) {
+            diag.visibility = View.GONE
+            return
+        }
+        val codec = (vf.sampleMimeType ?: "?").removePrefix("video/").uppercase()
+        val sb = StringBuilder()
+        sb.append(codec).append(" · ").append(vf.width).append("x").append(vf.height)
+            .append(" · ").append(if (useMainStream) "HD" else "SD").append('\n')
+        sb.append("Decodificador: ").append(decoderName.ifEmpty { "-" }).append('\n')
+        if (fps >= 0f) {
+            sb.append("Imágenes/s: ").append(String.format(java.util.Locale.US, "%.1f", fps))
+            if (dropped > 0) sb.append(" · perdidas: ").append(dropped)
+            sb.append('\n')
+        }
+        if (vf.frameRate > 0f) sb.append("Cámara anuncia: ").append(Math.round(vf.frameRate)).append(" fps\n")
+        if (vf.bitrate > 0) sb.append("Bitrate: ").append(vf.bitrate / 1000).append(" kbps\n")
+        sb.append(camera.brand.label).append(" · ").append(camera.host).append(":").append(camera.port)
+        if (camera.brand == Brand.DAHUA || camera.brand == Brand.HIKVISION) sb.append(" · canal ").append(camera.channel)
+        sb.append("\nParámetros SPS/PPS: ").append(when (vf.id) { "sdp" -> "del SDP"; "ib" -> "del flujo"; "fix" -> "corregidos"; else -> vf.id ?: "-" })
+        diag.text = sb.toString()
+        diag.visibility = View.VISIBLE
+    }
     private var player: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
     private var attempts = 0
@@ -134,7 +195,7 @@ class TileView(
         addView(status, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
 
         diag.setTextColor(Color.parseColor("#C9CED6"))
-        diag.textSize = 10f
+        diag.textSize = 11f
         diag.setPadding(dp(6), dp(2), dp(6), dp(2))
         diag.setBackgroundColor(Color.parseColor("#99000000"))
         diag.visibility = View.GONE
@@ -260,6 +321,8 @@ class TileView(
     }
 
     private fun releasePlayer() {
+        handler.removeCallbacks(infoTick)
+        diag.visibility = View.GONE
         playerView.player = null
         player?.release()
         player = null
@@ -296,14 +359,11 @@ class TileView(
         p.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 gotFrame = true
-                val vf = player?.videoFormat
-                if (vf != null) {
-                    diag.text = (vf.sampleMimeType ?: "?").removePrefix("video/") + " " + vf.width + "x" + vf.height +
-                        " · " + (vf.id ?: "-") + " · " + decoderName
-                    diag.visibility = View.VISIBLE
-                    handler.removeCallbacks(hideDiag)
-                    handler.postDelayed(hideDiag, 12000L)
-                }
+                lastRenderedAt = 0L
+                fps = -1f
+                handler.removeCallbacks(infoTick)
+                if (infoOn) handler.postDelayed(infoTick, 1500L)
+                refreshInfo()
                 handler.removeCallbacks(watchdog)
                 playerView.post {
                     playerView.requestLayout()

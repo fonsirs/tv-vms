@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private lateinit var chipAuto: Chip
     private lateinit var chipHd: Chip
     private lateinit var chipEvents: Chip
+    private lateinit var chipInfo: Chip
     private lateinit var panel: EventPanel
     private var hub: EventHub? = null
     private var unseen = 0
@@ -236,6 +237,11 @@ class MainActivity : Activity() {
             renderGrid()
         }
         chipEvents = chip("Eventos") { toggleEvents() }
+        chipInfo = chip("i") {
+            store.showInfo = !store.showInfo
+            for (t in tiles) t.setInfo(store.showInfo)
+            updateBar()
+        }
         val camsChip = chip("Cámaras") { dialogs.showList() }
         camsChip.filled = true
 
@@ -254,6 +260,7 @@ class MainActivity : Activity() {
         addToBar(next, 0)
         bar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         addToBar(chipAuto)
+        addToBar(chipInfo)
         addToBar(chipEvents)
         addToBar(camsChip)
         addToBar(clock, 20)
@@ -292,6 +299,7 @@ class MainActivity : Activity() {
         chipHd.active = store.hd
         chipHd.text = if (store.hd) "HD" else "SD"
         chipEvents.active = store.eventsOpen
+        chipInfo.active = store.showInfo
         chipEvents.text = if (unseen > 0 && !store.eventsOpen) "Eventos ($unseen)" else "Eventos"
     }
 
@@ -420,6 +428,7 @@ class MainActivity : Activity() {
         for (i in from until to) {
             val cam = cameras[i]
             val tile = TileView(this, cam, false, false)
+            tile.setInfo(store.showInfo)
             tile.setOnClickListener {
                 showFull(cameras.indexOfFirst { it.id == cam.id })
             }
@@ -485,6 +494,7 @@ class MainActivity : Activity() {
         wall = null
         content.setPadding(0, 0, 0, 0)
         val tile = TileView(this, cameras[fullIndex], true, true)
+        tile.setInfo(store.showInfo)
         tile.isFocusable = false
         tile.isClickable = false
         tile.setAudio(true)

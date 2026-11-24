@@ -115,6 +115,13 @@ class CameraStore(context: Context) {
             prefs.edit().putInt("eventFilter", v).apply()
         }
 
+    /** Rótulo con los datos técnicos de cada cámara (botón "i"). */
+    var showInfo: Boolean
+        get() = prefs.getBoolean("showInfo", false)
+        set(v) {
+            prefs.edit().putBoolean("showInfo", v).apply()
+        }
+
     var eventsOpen: Boolean
         get() = prefs.getBoolean("eventsOpen", false)
         set(v) {
