@@ -32,7 +32,10 @@ import androidx.media3.exoplayer.rtsp.RtpPayloadFormat;
 import androidx.media3.extractor.ExtractorOutput;
 import androidx.media3.extractor.TrackOutput;
 import com.google.common.collect.ImmutableList;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
@@ -73,12 +76,14 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   private long startTimeOffsetUs;
 
-  // TV VMS: si el SDP no trae sprop-parameter-sets, se esperan el SPS y el PPS del propio flujo y
-  // no se entrega ninguna muestra al decodificador hasta tenerlos (así arranca con el formato bueno).
+  // TV VMS: si el SDP no trae sprop-parameter-sets, se leen el SPS y los PPS del propio flujo y no se
+  // entrega ninguna muestra al decodificador hasta tenerlos y hasta llegar un fotograma clave (IDR).
   private boolean needInbandParameterSets;
   private boolean formatCompleted;
+  private boolean seenKeyFrame;
+  private boolean droppingFragmentedUnit;
   private byte[] inbandSps;
-  private byte[] inbandPps;
+  private final List<byte[]> inbandPps = new ArrayList<>();
 
   /** Creates an instance. */
   public RtpH264Reader(RtpPayloadFormat payloadFormat) {
@@ -95,20 +100,21 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     castNonNull(trackOutput).format(payloadFormat.format);
     needInbandParameterSets = payloadFormat.format.initializationData.isEmpty();
     formatCompleted = !needInbandParameterSets;
+    seenKeyFrame = !needInbandParameterSets;
   }
 
   /**
-   * Mientras falten SPS/PPS: guarda los que lleguen y descarta el paquete. Devuelve true si el
-   * paquete no debe procesarse.
+   * Recoge SPS/PPS del flujo. Devuelve true si el paquete debe descartarse. Cuando llega el primer
+   * paquete que no es SPS/PPS y ya hay SPS y PPS, completa el formato y devuelve false.
    */
-  private boolean dropWhileWaitingForParameterSets(ParsableByteArray data, int packetMode) {
-    if (formatCompleted) {
-      return false;
-    }
+  private boolean gatherParameterSets(ParsableByteArray data, int packetMode) {
     byte[] array = data.getData();
     int position = data.getPosition();
+    boolean hasOther = false;
     if (packetMode > 0 && packetMode < 24) {
-      captureParameterSet(array, position, data.bytesLeft());
+      if (!storeParameterSet(array, position, data.bytesLeft())) {
+        hasOther = true;
+      }
     } else if (packetMode == RTP_PACKET_TYPE_STAP_A) {
       int pos = position + 1;
       int limit = data.limit();
@@ -118,46 +124,118 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
         if (length <= 0 || pos + length > limit) {
           break;
         }
-        captureParameterSet(array, pos, length);
+        if (!storeParameterSet(array, pos, length)) {
+          hasOther = true;
+        }
         pos += length;
       }
+    } else {
+      hasOther = true;
+    }
+    if (hasOther && inbandSps != null && !inbandPps.isEmpty() && completeFormat()) {
+      return false;
     }
     return true;
   }
 
-  private void captureParameterSet(byte[] array, int offset, int length) {
+  /** Guarda el NAL si es SPS (7) o PPS (8). Devuelve true si lo era. */
+  private boolean storeParameterSet(byte[] array, int offset, int length) {
     if (length < 2 || offset + length > array.length) {
-      return;
+      return false;
     }
     int type = array[offset] & 0x1F;
     if (type == 7) {
       inbandSps = Arrays.copyOfRange(array, offset, offset + length);
+      return true;
     } else if (type == 8) {
-      inbandPps = Arrays.copyOfRange(array, offset, offset + length);
+      byte[] pps = Arrays.copyOfRange(array, offset, offset + length);
+      for (byte[] known : inbandPps) {
+        if (Arrays.equals(known, pps)) {
+          return true;
+        }
+      }
+      inbandPps.add(pps);
+      return true;
     }
-    if (inbandSps != null && inbandPps != null && trackOutput != null) {
-      try {
-        byte[] sps = withStartCode(inbandSps);
-        byte[] pps = withStartCode(inbandPps);
-        NalUnitUtil.SpsData spsData =
-            NalUnitUtil.parseSpsNalUnit(sps, NalUnitUtil.NAL_START_CODE.length, sps.length);
-        Format completed =
-            payloadFormat
-                .format
-                .buildUpon()
-                .setInitializationData(ImmutableList.of(sps, pps))
-                .setWidth(spsData.width)
-                .setHeight(spsData.height)
-                .setPixelWidthHeightRatio(spsData.pixelWidthHeightRatio)
-                .build();
-        trackOutput.format(completed);
-        formatCompleted = true;
-      } catch (RuntimeException e) {
-        Log.w(TAG, "No se pudo leer el SPS del flujo", e);
-        inbandSps = null;
-        inbandPps = null;
+    return false;
+  }
+
+  private boolean completeFormat() {
+    try {
+      byte[] sps = withStartCode(inbandSps);
+      ByteArrayOutputStream ppsAll = new ByteArrayOutputStream();
+      for (byte[] pps : inbandPps) {
+        byte[] withCode = withStartCode(pps);
+        ppsAll.write(withCode, 0, withCode.length);
+      }
+      NalUnitUtil.SpsData spsData =
+          NalUnitUtil.parseSpsNalUnit(sps, NalUnitUtil.NAL_START_CODE.length, sps.length);
+      Format completed =
+          payloadFormat
+              .format
+              .buildUpon()
+              .setInitializationData(ImmutableList.of(sps, ppsAll.toByteArray()))
+              .setWidth(spsData.width)
+              .setHeight(spsData.height)
+              .setPixelWidthHeightRatio(spsData.pixelWidthHeightRatio)
+              .build();
+      castNonNull(trackOutput).format(completed);
+      formatCompleted = true;
+      return true;
+    } catch (RuntimeException e) {
+      Log.w(TAG, "No se pudo leer el SPS del flujo", e);
+      inbandSps = null;
+      inbandPps.clear();
+      return false;
+    }
+  }
+
+  /** Descarta todo hasta el primer fotograma clave (IDR). Devuelve true si hay que descartar. */
+  private boolean dropUntilKeyFrame(ParsableByteArray data, int packetMode) {
+    byte[] array = data.getData();
+    int position = data.getPosition();
+    if (packetMode == RTP_PACKET_TYPE_FU_A) {
+      if (data.bytesLeft() < 2) {
+        return true;
+      }
+      int fuHeader = array[position + 1];
+      boolean start = (fuHeader & 0x80) > 0;
+      int type = fuHeader & 0x1F;
+      if (start) {
+        if (type == NAL_UNIT_TYPE_IDR) {
+          seenKeyFrame = true;
+          droppingFragmentedUnit = false;
+          return false;
+        }
+        droppingFragmentedUnit = true;
+        return true;
+      }
+      return droppingFragmentedUnit;
+    }
+    if (packetMode > 0 && packetMode < 24) {
+      if (packetMode == NAL_UNIT_TYPE_IDR) {
+        seenKeyFrame = true;
+        return false;
+      }
+      return true;
+    }
+    if (packetMode == RTP_PACKET_TYPE_STAP_A) {
+      int pos = position + 1;
+      int limit = data.limit();
+      while (pos + 2 < limit) {
+        int length = ((array[pos] & 0xFF) << 8) | (array[pos + 1] & 0xFF);
+        pos += 2;
+        if (length <= 0 || pos + length > limit) {
+          break;
+        }
+        if ((array[pos] & 0x1F) == NAL_UNIT_TYPE_IDR) {
+          seenKeyFrame = true;
+          return false;
+        }
+        pos += length;
       }
     }
+    return true;
   }
 
   private static byte[] withStartCode(byte[] nal) {
@@ -183,9 +261,18 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
 
     checkStateNotNull(trackOutput);
-    if (needInbandParameterSets && dropWhileWaitingForParameterSets(data, rtpH264PacketMode)) {
-      previousSequenceNumber = sequenceNumber;
-      return;
+    if (needInbandParameterSets) {
+      boolean drop = false;
+      if (!formatCompleted) {
+        drop = gatherParameterSets(data, rtpH264PacketMode);
+      }
+      if (!drop && !seenKeyFrame) {
+        drop = dropUntilKeyFrame(data, rtpH264PacketMode);
+      }
+      if (drop) {
+        previousSequenceNumber = sequenceNumber;
+        return;
+      }
     }
     if (rtpH264PacketMode > 0 && rtpH264PacketMode < 24) {
       processSingleNalUnitPacket(data);
