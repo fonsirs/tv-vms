@@ -174,6 +174,8 @@ class CameraDialogs(
         items.add("➕  Añadir cámara")
         items.add("➕  Añadir NVR / DVR (varios canales)")
         items.add("PIN de acceso a la app" + (if (pin.isSet()) "  (activado)" else "  (desactivado)"))
+        items.add("🗑  Eliminar varias cámaras…")
+        items.add("🗑  Eliminar un NVR / DVR completo…")
         for (c in cams) {
             items.add(c.name + "   ·   " + c.brand.label + "   " + c.host)
         }
@@ -184,10 +186,82 @@ class CameraDialogs(
                     0 -> showForm(null)
                     1 -> showNvrForm()
                     2 -> showPinMenu()
-                    else -> showActions(cams[which - 3])
+                    3 -> showDeleteMany(cams)
+                    4 -> showDeleteByHost(cams)
+                    else -> showActions(cams[which - 5])
                 }
             }
             .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun showDeleteMany(cams: List<Camera>) {
+        if (cams.isEmpty()) {
+            toast("No hay cámaras")
+            showList()
+            return
+        }
+        val names = cams.map { it.name + "   ·   " + it.host }.toTypedArray()
+        val checked = BooleanArray(cams.size)
+        val dlg = AlertDialog.Builder(act)
+            .setTitle("Marca las cámaras a eliminar")
+            .setMultiChoiceItems(names, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton("Eliminar", null)
+            .setNeutralButton("Marcar todas", null)
+            .setNegativeButton("Atrás") { _, _ -> showList() }
+            .create()
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val all = checked.any { !it }
+                for (i in checked.indices) {
+                    checked[i] = all
+                    dlg.listView.setItemChecked(i, all)
+                }
+            }
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val ids = HashSet<String>()
+                for (i in cams.indices) if (checked[i]) ids.add(cams[i].id)
+                if (ids.isEmpty()) {
+                    toast("No has marcado ninguna cámara")
+                    return@setOnClickListener
+                }
+                dlg.dismiss()
+                confirmRemoveMany(ids, "¿Eliminar " + ids.size + " cámara(s)?")
+            }
+        }
+        dlg.show()
+    }
+
+    private fun showDeleteByHost(cams: List<Camera>) {
+        val groups = cams.groupBy { it.host }.filterKeys { it.isNotBlank() }
+        if (groups.isEmpty()) {
+            toast("No hay equipos con IP")
+            showList()
+            return
+        }
+        val hosts = groups.keys.toList()
+        val items = hosts.map { h -> h + "   ·   " + groups[h]!!.size + " cámara(s)" }.toTypedArray()
+        AlertDialog.Builder(act)
+            .setTitle("¿Qué NVR / DVR eliminar?")
+            .setItems(items) { _, which ->
+                val h = hosts[which]
+                val ids = groups[h]!!.map { it.id }.toSet()
+                confirmRemoveMany(ids, "¿Eliminar las " + ids.size + " cámaras de " + h + "?")
+            }
+            .setNegativeButton("Atrás") { _, _ -> showList() }
+            .show()
+    }
+
+    private fun confirmRemoveMany(ids: Set<String>, question: String) {
+        AlertDialog.Builder(act)
+            .setTitle("Confirmar")
+            .setMessage(question + "\nNo se puede deshacer.")
+            .setPositiveButton("Eliminar") { _, _ ->
+                store.removeMany(ids)
+                onChanged()
+                showList()
+            }
+            .setNegativeButton("Cancelar") { _, _ -> showList() }
             .show()
     }
 

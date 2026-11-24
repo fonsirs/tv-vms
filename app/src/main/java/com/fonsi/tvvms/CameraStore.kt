@@ -74,6 +74,10 @@ class CameraStore(context: Context) {
         save(load().filter { it.id != id })
     }
 
+    fun removeMany(ids: Set<String>) {
+        save(load().filter { it.id !in ids })
+    }
+
     fun move(id: String, delta: Int) {
         val l = ArrayList(load())
         val i = l.indexOfFirst { it.id == id }
