@@ -18,11 +18,14 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.ui.PlayerView
@@ -211,6 +214,14 @@ class TileView(
         showStatus(if (attempts == 0) "Conectando…" else "Reconectando…", false)
 
         val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+        if (!fullscreen) {
+            // En el cuadrante (flujo ligero) se prefiere el decodificador por software de H.264: los de
+            // hardware de algunos Fire Stick/TV son pocos y en ocasiones dan imagen verde.
+            renderers.setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
+                val list = MediaCodecUtil.getDecoderInfos(mime, secure, tunneling)
+                if (mime == MimeTypes.VIDEO_H264) list.sortedBy { if (it.softwareOnly) 0 else 1 } else list
+            })
+        }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(500, 1500, 250, 500)
             .build()
