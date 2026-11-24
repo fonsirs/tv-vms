@@ -64,6 +64,7 @@ dependencies {
     implementation("androidx.media3:media3-container:$media3")
     implementation("androidx.media3:media3-datasource:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
+    implementation("androidx.annotation:annotation:1.8.2")
     compileOnly("org.checkerframework:checker-qual:3.43.0")
     compileOnly("com.google.errorprone:error_prone_annotations:2.31.0")
     implementation("androidx.media3:media3-ui:$media3")
