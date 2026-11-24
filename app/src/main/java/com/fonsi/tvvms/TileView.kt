@@ -23,6 +23,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.ui.PlayerView
 
@@ -43,6 +44,9 @@ class TileView(
         LayoutInflater.from(context).inflate(R.layout.player_view, this, false) as PlayerView
     private val dotShape = GradientDrawable()
     private val status = TextView(context)
+    private val diag = TextView(context)
+    private var decoderName = ""
+    private val hideDiag = Runnable { diag.visibility = View.GONE }
     private var player: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
     private var attempts = 0
@@ -122,6 +126,13 @@ class TileView(
         status.background = statusBg
         status.setPadding(dp(14), dp(8), dp(14), dp(8))
         addView(status, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+
+        diag.setTextColor(Color.parseColor("#C9CED6"))
+        diag.textSize = 10f
+        diag.setPadding(dp(6), dp(2), dp(6), dp(2))
+        diag.setBackgroundColor(Color.parseColor("#99000000"))
+        diag.visibility = View.GONE
+        addView(diag, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START))
 
         foreground = focusBorder(radius)
     }
@@ -210,6 +221,14 @@ class TileView(
         p.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 gotFrame = true
+                val vf = player?.videoFormat
+                if (vf != null) {
+                    diag.text = (vf.sampleMimeType ?: "?").removePrefix("video/") + " " + vf.width + "x" + vf.height +
+                        " · " + (vf.id ?: "-") + " · " + decoderName
+                    diag.visibility = View.VISIBLE
+                    handler.removeCallbacks(hideDiag)
+                    handler.postDelayed(hideDiag, 12000L)
+                }
                 handler.removeCallbacks(watchdog)
                 playerView.post {
                     playerView.requestLayout()
@@ -227,6 +246,16 @@ class TileView(
                     true
                 )
                 scheduleRetry()
+            }
+        })
+        p.addAnalyticsListener(object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long
+            ) {
+                this@TileView.decoderName = decoderName
             }
         })
         playerView.player = p

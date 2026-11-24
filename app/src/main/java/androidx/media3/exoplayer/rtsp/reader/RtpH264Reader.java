@@ -81,6 +81,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
   private boolean needInbandParameterSets;
   private boolean formatCompleted;
   private boolean seenKeyFrame;
+  private boolean sdpChecked;
   private boolean droppingFragmentedUnit;
   private byte[] inbandSps;
   private final List<byte[]> inbandPps = new ArrayList<>();
@@ -108,6 +109,15 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
    * paquete que no es SPS/PPS y ya hay SPS y PPS, completa el formato y devuelve false.
    */
   private boolean gatherParameterSets(ParsableByteArray data, int packetMode) {
+    boolean hasOther = scanParameterSets(data, packetMode);
+    if (hasOther && inbandSps != null && !inbandPps.isEmpty() && completeFormat("ib")) {
+      return false;
+    }
+    return true;
+  }
+
+  /** Guarda los SPS/PPS que haya en el paquete. Devuelve true si hay algo más (u otro tipo de paquete). */
+  private boolean scanParameterSets(ParsableByteArray data, int packetMode) {
     byte[] array = data.getData();
     int position = data.getPosition();
     boolean hasOther = false;
@@ -132,10 +142,27 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     } else {
       hasOther = true;
     }
-    if (hasOther && inbandSps != null && !inbandPps.isEmpty() && completeFormat()) {
-      return false;
+    return hasOther;
+  }
+
+  /**
+   * Si el SDP trajo SPS/PPS, comprueba una vez que coinciden con los del flujo; si no coinciden
+   * (algunos grabadores dan datos de otra resolución) se usan los del flujo.
+   */
+  private void verifySdpParameterSets(ParsableByteArray data, int packetMode) {
+    scanParameterSets(data, packetMode);
+    if (inbandSps == null || inbandPps.isEmpty()) {
+      return;
     }
-    return true;
+    sdpChecked = true;
+    byte[] sdpSps = payloadFormat.format.initializationData.get(0);
+    int codeLen = NalUnitUtil.NAL_START_CODE.length;
+    boolean same =
+        sdpSps.length == inbandSps.length + codeLen
+            && Arrays.equals(Arrays.copyOfRange(sdpSps, codeLen, sdpSps.length), inbandSps);
+    if (!same) {
+      completeFormat("fix");
+    }
   }
 
   /** Guarda el NAL si es SPS (7) o PPS (8). Devuelve true si lo era. */
@@ -160,7 +187,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     return false;
   }
 
-  private boolean completeFormat() {
+  private boolean completeFormat(String id) {
     try {
       byte[] sps = withStartCode(inbandSps);
       ByteArrayOutputStream ppsAll = new ByteArrayOutputStream();
@@ -174,6 +201,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
           payloadFormat
               .format
               .buildUpon()
+              .setId(id)
               .setInitializationData(ImmutableList.of(sps, ppsAll.toByteArray()))
               .setWidth(spsData.width)
               .setHeight(spsData.height)
@@ -261,6 +289,9 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
 
     checkStateNotNull(trackOutput);
+    if (!needInbandParameterSets && !sdpChecked) {
+      verifySdpParameterSets(data, rtpH264PacketMode);
+    }
     if (needInbandParameterSets) {
       boolean drop = false;
       if (!formatCompleted) {

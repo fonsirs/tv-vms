@@ -276,6 +276,7 @@ import com.google.common.collect.ImmutableMap;
         // TV VMS: algunos grabadores/cámaras no envían sprop-parameter-sets en el SDP. En ese caso
         // se usa un tamaño provisional y RtpH264Reader completa el formato con el SPS/PPS del flujo.
         if (fmtpParameters.containsKey(PARAMETER_SPROP_PARAMS)) {
+          formatBuilder.setId("sdp");
           processH264FmtpAttribute(formatBuilder, fmtpParameters);
         } else {
           formatBuilder.setWidth(1920).setHeight(1080);
