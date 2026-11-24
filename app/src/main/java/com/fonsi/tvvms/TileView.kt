@@ -17,6 +17,7 @@ import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -173,6 +174,15 @@ class TileView(
     fun setAudio(on: Boolean) {
         audio = on
         player?.volume = if (on) 1f else 0f
+        player?.let { applyAudioSelection(it) }
+    }
+
+    // Sin audio activado no se pide ni se decodifica la pista de audio: menos carga y menos red,
+    // y evita que el audio frene la imagen en equipos modestos como un Fire Stick.
+    private fun applyAudioSelection(p: ExoPlayer) {
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !audio)
+            .build()
     }
 
     fun start() {
@@ -229,6 +239,7 @@ class TileView(
             .setLoadControl(loadControl)
             .build()
         p.volume = if (audio) 1f else 0f
+        applyAudioSelection(p)
         p.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 gotFrame = true
