@@ -73,7 +73,9 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   private long startTimeOffsetUs;
 
-  // TV VMS: SPS/PPS recogidos del propio flujo cuando el SDP no los trae.
+  // TV VMS: si el SDP no trae sprop-parameter-sets, se esperan el SPS y el PPS del propio flujo y
+  // no se entrega ninguna muestra al decodificador hasta tenerlos (así arranca con el formato bueno).
+  private boolean needInbandParameterSets;
   private boolean formatCompleted;
   private byte[] inbandSps;
   private byte[] inbandPps;
@@ -91,13 +93,40 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     trackOutput = extractorOutput.track(trackId, C.TRACK_TYPE_VIDEO);
 
     castNonNull(trackOutput).format(payloadFormat.format);
-    // Si el SDP ya traía los parámetros, no hay nada que completar.
-    formatCompleted = !payloadFormat.format.initializationData.isEmpty();
+    needInbandParameterSets = payloadFormat.format.initializationData.isEmpty();
+    formatCompleted = !needInbandParameterSets;
   }
 
-  /** Guarda una copia del NAL si es SPS (7) o PPS (8) y completa el formato cuando tiene ambos. */
+  /**
+   * Mientras falten SPS/PPS: guarda los que lleguen y descarta el paquete. Devuelve true si el
+   * paquete no debe procesarse.
+   */
+  private boolean dropWhileWaitingForParameterSets(ParsableByteArray data, int packetMode) {
+    if (formatCompleted) {
+      return false;
+    }
+    byte[] array = data.getData();
+    int position = data.getPosition();
+    if (packetMode > 0 && packetMode < 24) {
+      captureParameterSet(array, position, data.bytesLeft());
+    } else if (packetMode == RTP_PACKET_TYPE_STAP_A) {
+      int pos = position + 1;
+      int limit = data.limit();
+      while (pos + 2 < limit) {
+        int length = ((array[pos] & 0xFF) << 8) | (array[pos + 1] & 0xFF);
+        pos += 2;
+        if (length <= 0 || pos + length > limit) {
+          break;
+        }
+        captureParameterSet(array, pos, length);
+        pos += length;
+      }
+    }
+    return true;
+  }
+
   private void captureParameterSet(byte[] array, int offset, int length) {
-    if (formatCompleted || length < 2 || offset + length > array.length) {
+    if (length < 2 || offset + length > array.length) {
       return;
     }
     int type = array[offset] & 0x1F;
@@ -154,6 +183,10 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     }
 
     checkStateNotNull(trackOutput);
+    if (needInbandParameterSets && dropWhileWaitingForParameterSets(data, rtpH264PacketMode)) {
+      previousSequenceNumber = sequenceNumber;
+      return;
+    }
     if (rtpH264PacketMode > 0 && rtpH264PacketMode < 24) {
       processSingleNalUnitPacket(data);
     } else if (rtpH264PacketMode == RTP_PACKET_TYPE_STAP_A) {
@@ -213,7 +246,6 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
     int numBytesInData = data.bytesLeft();
-    captureParameterSet(data.getData(), data.getPosition(), numBytesInData);
     fragmentedSampleSizeBytes += writeStartCode();
     trackOutput.sampleData(data, numBytesInData);
     fragmentedSampleSizeBytes += numBytesInData;
@@ -257,7 +289,6 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     int nalUnitLength;
     while (data.bytesLeft() > 4) {
       nalUnitLength = data.readUnsignedShort();
-      captureParameterSet(data.getData(), data.getPosition(), nalUnitLength);
       fragmentedSampleSizeBytes += writeStartCode();
       trackOutput.sampleData(data, nalUnitLength);
       fragmentedSampleSizeBytes += nalUnitLength;

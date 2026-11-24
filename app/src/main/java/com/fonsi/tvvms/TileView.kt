@@ -239,7 +239,7 @@ class TileView(
         p.prepare()
         p.playWhenReady = true
         player = p
-        handler.postDelayed(watchdog, 7000L)
+        handler.postDelayed(watchdog, 12000L)
     }
 
     private fun scheduleRetry() {
