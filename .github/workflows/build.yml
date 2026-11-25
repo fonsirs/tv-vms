@@ -41,6 +41,19 @@ jobs:
           KS_KEY_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
+      - name: Compilar paquete AAB firmado (para Google Play)
+        env:
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: tvvms
+          KS_KEY_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: gradle :app:bundleRelease --no-daemon --stacktrace
+
+      - name: Guardar AAB como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-VMS-aab
+          path: app/build/outputs/bundle/release/app-release.aab
+
       - name: Renombrar APK
         run: cp app/build/outputs/apk/release/app-release.apk TV-VMS.apk
 

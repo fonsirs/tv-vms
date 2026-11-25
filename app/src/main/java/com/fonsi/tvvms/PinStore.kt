@@ -15,9 +15,17 @@ class PinStore(context: Context) {
 
     fun isSet(): Boolean = prefs.contains("hash")
 
-    private fun hash(pin: String, salt: ByteArray): ByteArray {
-        val spec = PBEKeySpec(pin.toCharArray(), salt, 100000, 256)
-        return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
+    /** PBKDF2 con SHA-256 (Android 8+); en equipos antiguos o con un PIN guardado por versiones previas, SHA-1. */
+    private fun algo(): String =
+        if (android.os.Build.VERSION.SDK_INT >= 26) "PBKDF2WithHmacSHA256" else "PBKDF2WithHmacSHA1"
+
+    private fun hash(pin: String, salt: ByteArray, algorithm: String): ByteArray {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 120000, 256)
+        try {
+            return SecretKeyFactory.getInstance(algorithm).generateSecret(spec).encoded
+        } finally {
+            spec.clearPassword()
+        }
     }
 
     fun set(pin: String) {
@@ -25,7 +33,9 @@ class PinStore(context: Context) {
         SecureRandom().nextBytes(salt)
         prefs.edit()
             .putString("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
-            .putString("hash", Base64.encodeToString(hash(pin, salt), Base64.NO_WRAP))
+            .putString("algo", algo())
+            .putInt("iter", 120000)
+            .putString("hash", Base64.encodeToString(hash(pin, salt, algo()), Base64.NO_WRAP))
             .putInt("fails", 0)
             .putLong("lockUntil", 0L)
             .putLong("lockMs", 0L)
@@ -55,7 +65,12 @@ class PinStore(context: Context) {
         val hashStr = prefs.getString("hash", null) ?: return false
         val salt = Base64.decode(saltStr, Base64.NO_WRAP)
         val expected = Base64.decode(hashStr, Base64.NO_WRAP)
-        if (MessageDigest.isEqual(expected, hash(pin, salt))) {
+        // los PIN guardados por versiones anteriores usan SHA-1 con 100000 vueltas
+        val stored = prefs.getString("algo", null)
+        val ok = if (stored == null) MessageDigest.isEqual(expected, legacyHash(pin, salt))
+        else MessageDigest.isEqual(expected, hash(pin, salt, stored))
+        if (ok) {
+            if (stored == null) set(pin)
             prefs.edit().putInt("fails", 0).putLong("lockUntil", 0L).putLong("lockMs", 0L).apply()
             return true
         }
@@ -72,5 +87,14 @@ class PinStore(context: Context) {
             .putLong("lockUntil", if (lockMs > 0L) System.currentTimeMillis() + lockMs else 0L)
             .apply()
         return false
+    }
+
+    private fun legacyHash(pin: String, salt: ByteArray): ByteArray {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 100000, 256)
+        try {
+            return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
+        } finally {
+            spec.clearPassword()
+        }
     }
 }

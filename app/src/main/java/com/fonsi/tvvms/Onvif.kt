@@ -142,6 +142,7 @@ object Onvif {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
+            conn.instanceFollowRedirects = false
             conn.connectTimeout = 5000
             conn.readTimeout = 8000
             conn.doOutput = true

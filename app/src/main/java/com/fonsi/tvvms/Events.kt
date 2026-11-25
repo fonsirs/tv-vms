@@ -124,7 +124,9 @@ class EventHub(
 
         override fun run() {
             var delay = 3000L
+            var fails = 0
             while (!stopped && alive()) {
+                val began = System.currentTimeMillis()
                 try {
                     onStatus(g.key, g.label, "conectando…")
                     when (g.brand) {
@@ -132,19 +134,30 @@ class EventHub(
                         Brand.HIKVISION -> runHikvision()
                         else -> runOnvif()
                     }
-                    delay = 3000L
                 } catch (e: InterruptedException) {
                     return
                 } catch (e: Exception) {
                     if (stopped) return
-                    onStatus(g.key, g.label, "sin eventos: " + (e.message ?: e.javaClass.simpleName).replace(Regex("com\\.android\\.okhttp\\.Address@\\w+"), "equipo").take(60))
+                    // una conexión que aguantó más de 30 s era buena: el corte es normal y se reintenta enseguida
+                    if (System.currentTimeMillis() - began > 30000L) {
+                        fails = 0
+                        delay = 3000L
+                    } else {
+                        fails++
+                    }
+                    // un equipo que rechaza los eventos varias veces (cámaras Wi-Fi pequeñas) no se vuelve a molestar
+                    // cada pocos segundos: eso las satura y les corta el vídeo
+                    val slow = fails >= 3
+                    val msg = (e.message ?: e.javaClass.simpleName).replace(Regex("com\\.android\\.okhttp\\.Address@\\w+"), "equipo").take(50)
+                    onStatus(g.key, g.label, "sin eventos: " + msg + (if (slow) " (reintento cada 5 min)" else ""))
+                    if (slow) delay = 300000L
                 }
                 try {
                     Thread.sleep(delay)
                 } catch (e: InterruptedException) {
                     return
                 }
-                delay = minOf(delay * 2, 60000L)
+                if (delay < 300000L) delay = minOf(delay * 2, 60000L)
             }
         }
 

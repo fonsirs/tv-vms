@@ -317,6 +317,7 @@ class TileView(
         active = false
         handler.removeCallbacks(retryRunnable)
         handler.removeCallbacks(watchdog)
+        handler.removeCallbacks(flashOff)
         releasePlayer()
     }
 

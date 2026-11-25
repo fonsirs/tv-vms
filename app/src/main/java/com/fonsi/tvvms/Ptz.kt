@@ -13,26 +13,6 @@ object Ptz {
     private class OnvifInfo(val ptzUrl: String, val token: String, val offset: Long)
 
     private val onvifCache = HashMap<String, OnvifInfo>()
-    private val supportCache = HashMap<String, Boolean?>()
-
-    /** Comprueba (en segundo plano) si la cámara tiene PTZ. true = sí, false = no, null = no se pudo saber. */
-    fun checkSupport(cam: Camera, done: (Boolean?) -> Unit) {
-        exec.execute {
-            val r = synchronized(supportCache) { if (supportCache.containsKey(cam.id)) supportCache[cam.id] else Unit }
-            if (r != Unit) {
-                @Suppress("UNCHECKED_CAST")
-                done(r as Boolean?)
-                return@execute
-            }
-            val res: Boolean? = try {
-                supported(cam)
-            } catch (e: Exception) {
-                null
-            }
-            if (res != null) synchronized(supportCache) { supportCache[cam.id] = res }
-            done(res)
-        }
-    }
 
     @Volatile private var startedAt = 0L
 
@@ -61,37 +41,6 @@ object Ptz {
     // ---------------------------------------------------------------- común
 
     private fun base(cam: Camera) = "http://" + cam.host + ":" + cam.onvifPort
-
-    private fun supported(cam: Camera): Boolean? {
-        return when (cam.brand) {
-            Brand.DAHUA -> {
-                try {
-                    val url = base(cam) + "/cgi-bin/ptz.cgi?action=getCurrentProtocolCaps&channel=" + (cam.channel - 1)
-                    val bytes = Http.getBytes(url, cam.user, cam.pass, 64 * 1024)
-                    val text = String(bytes, Charsets.UTF_8)
-                    if (text.contains("Error", true) && !text.contains("caps.")) false else true
-                } catch (e: IOException) {
-                    verdict(e)
-                }
-            }
-            Brand.HIKVISION -> {
-                try {
-                    Http.getBytes(base(cam) + "/ISAPI/PTZCtrl/channels/" + cam.channel + "/capabilities", cam.user, cam.pass, 64 * 1024)
-                    true
-                } catch (e: IOException) {
-                    verdict(e)
-                }
-            }
-            Brand.ONVIF -> onvifInfo(cam) != null
-            else -> false
-        }
-    }
-
-    /** 400/403/404/501 = la cámara dice que no tiene PTZ; cualquier otro fallo = no se sabe. */
-    private fun verdict(e: IOException): Boolean? {
-        val m = e.message ?: ""
-        return if (Regex("^HTTP (400|403|404|405|501)").containsMatchIn(m)) false else null
-    }
 
     private fun send(cam: Camera, dir: Dir, go: Boolean): String {
         return when (cam.brand) {

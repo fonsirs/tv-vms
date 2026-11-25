@@ -1,0 +1,10 @@
+TV VMS
+Copyright (c) Fonsi.
+
+Este producto incluye software de terceros:
+
+- AndroidX Media3 (ExoPlayer, módulo RTSP incluido con un parche local)
+  Copyright The Android Open Source Project. Licencia Apache 2.0.
+  Texto completo: app/src/main/java/androidx/media3/exoplayer/rtsp/LICENSE-media3.txt
+- AndroidX Annotation, checker-qual y error_prone_annotations (solo en compilación).
+  Licencias Apache 2.0 / MIT.
