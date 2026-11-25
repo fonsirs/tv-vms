@@ -202,6 +202,11 @@ class EventPanel(context: Context) : LinearLayout(context) {
         footer.text = statuses.values.joinToString("\n")
     }
 
+    /** El estado de conexión de abajo solo se ve con el botón "i" activado. */
+    fun setInfoVisible(on: Boolean) {
+        footer.visibility = if (on) View.VISIBLE else View.GONE
+    }
+
     fun clearStatus() {
         statuses.clear()
         footer.text = ""
