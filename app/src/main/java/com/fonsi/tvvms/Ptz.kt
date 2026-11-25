@@ -36,6 +36,10 @@ object Ptz {
 
     @Volatile private var startedAt = 0L
 
+    /** Variante de la orden Dahua (canal y argumentos); se cambia desde el mando hasta que la cámara responda. */
+    @Volatile var variant = 0
+    const val VARIANTS = 4
+
     /** Empieza a mover. onResult recibe "OK ..." o el motivo del fallo, para enseñarlo en pantalla. */
     fun start(cam: Camera, dir: Dir, onResult: ((String) -> Unit)? = null) {
         exec.execute {
@@ -100,8 +104,12 @@ object Ptz {
                     Dir.UP -> "Up"; Dir.DOWN -> "Down"; Dir.LEFT -> "Left"; Dir.RIGHT -> "Right"
                     Dir.ZOOM_IN -> "ZoomTele"; Dir.ZOOM_OUT -> "ZoomWide"
                 }
+                // variantes: 0 canal-1 · 1 canal tal cual · 2 canal-1 con arg1=velocidad · 3 canal tal cual con arg1=velocidad
+                val v = variant % VARIANTS
+                val ch = if (v == 0 || v == 2) cam.channel - 1 else cam.channel
+                val a1 = if (v >= 2) 5 else 0
                 val url = base(cam) + "/cgi-bin/ptz.cgi?action=" + (if (go) "start" else "stop") +
-                    "&channel=" + (cam.channel - 1) + "&code=" + code + "&arg1=0&arg2=5&arg3=0"
+                    "&channel=" + ch + "&code=" + code + "&arg1=" + a1 + "&arg2=5&arg3=0"
                 val r = Http.send(url, cam.user, cam.pass, "GET")
                 if (r.startsWith("Error", true)) throw IOException("la cámara responde: " + r.replace(Regex("\\s+"), " "))
                 r.replace(Regex("\\s+"), " ")

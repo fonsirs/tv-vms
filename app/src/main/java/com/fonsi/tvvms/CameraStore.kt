@@ -134,4 +134,11 @@ class CameraStore(context: Context) {
         set(v) {
             prefs.edit().putString("customIds", v.joinToString(",")).apply()
         }
+
+    /** Variante de la orden PTZ Dahua que funciona con este equipo. */
+    var ptzVariant: Int
+        get() = prefs.getInt("ptzVariant", 0)
+        set(v) {
+            prefs.edit().putInt("ptzVariant", v).apply()
+        }
 }

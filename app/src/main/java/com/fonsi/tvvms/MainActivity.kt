@@ -697,10 +697,11 @@ class MainActivity : Activity() {
 
     private fun ptzHelp(): String =
         if (ptzZoom) "PTZ · ZOOM     ▲ acercar    ▼ alejar    OK  volver a mover    Atrás  salir"
-        else "PTZ     ◀ ▲ ▼ ▶  mover    OK  zoom    Atrás  salir"
+        else "PTZ     ◀ ▲ ▼ ▶  mover    OK  zoom    Menú  otra variante    Atrás  salir"
 
     private fun ptzEnter() {
         if (ptzCam() == null) return
+        Ptz.variant = store.ptzVariant
         ptzMode = true
         ptzZoom = false
         // no se bloquea por la comprobación: algunos equipos (NVR) responden mal a ella aunque la cámara sí tenga PTZ
@@ -735,6 +736,15 @@ class MainActivity : Activity() {
                 if (down && event.repeatCount == 0) ptzReset()
                 return true
             }
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (down && event.repeatCount == 0) {
+                    ptzStopNow()
+                    Ptz.variant = (Ptz.variant + 1) % Ptz.VARIANTS
+                    store.ptzVariant = Ptz.variant
+                    ptzSetText("PTZ · variante " + (Ptz.variant + 1) + " de " + Ptz.VARIANTS + "  (prueba una flecha)")
+                }
+                return true
+            }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 if (down && event.repeatCount == 0) {
                     ptzStopNow()
@@ -761,7 +771,7 @@ class MainActivity : Activity() {
                 ptzDir = dir
                 val idx = fullIndex
                 Ptz.start(cam, dir) { msg ->
-                    runOnUiThread { if (ptzMode && fullIndex == idx) ptzSetText("PTZ " + dir.name + ": " + msg) }
+                    runOnUiThread { if (ptzMode && fullIndex == idx) ptzSetText("PTZ " + dir.name + ": " + msg + "  · v" + (Ptz.variant + 1)) }
                 }
             }
             // por si se pierde el aviso de "tecla soltada", se para solo
