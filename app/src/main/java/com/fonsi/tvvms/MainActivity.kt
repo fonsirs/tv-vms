@@ -228,7 +228,7 @@ class MainActivity : Activity() {
         chip4 = chip("4") { setGrid(4) }
         chip8 = chip("8") { setGrid(8) }
         chip16 = chip("16") { setGrid(16) }
-        chipCustom = chip("Mía") { onCustomChip() }
+        chipCustom = chip("★") { onCustomChip() }
         chipPrev = chip("‹") { changePage(-1) }
         chipNext = chip("›") { changePage(1) }
         pageLabel = TextView(this)
