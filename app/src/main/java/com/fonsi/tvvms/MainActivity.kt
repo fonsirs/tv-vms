@@ -51,6 +51,13 @@ class MainActivity : Activity() {
     private var hub: EventHub? = null
     private var unseen = 0
 
+    // PTZ en pantalla completa
+    private var ptzMode = false
+    private var ptzZoom = false
+    private var ptzDir: Ptz.Dir? = null
+    private var ptzPill: TextView? = null
+    private val ptzWatchdog = Runnable { ptzStopNow() }
+
     private var cameras: List<Camera> = emptyList()
     private var wall: WallLayout? = null
     private val tiles = ArrayList<TileView>()
@@ -97,6 +104,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         pausedAt = System.currentTimeMillis()
+        ptzStopNow()
         handler.removeCallbacksAndMessages(null)
         stopTiles()
         pinDialog?.dismiss()
@@ -488,6 +496,7 @@ class MainActivity : Activity() {
         if (cameras.isEmpty() || index < 0) return
         val first = fullIndex < 0
         val n = cameras.size
+        ptzReset()
         fullIndex = ((index % n) + n) % n
         stopTiles()
         content.removeAllViews()
@@ -536,7 +545,7 @@ class MainActivity : Activity() {
         fade(info, 3500L)
 
         if (first) {
-            val hint = pill("‹ ›  cambiar de cámara          OK  volver a la cuadrícula", 14f, Color.parseColor("#C9CED6"))
+            val hint = pill("‹ ›  cambiar de cámara     ▲  PTZ     OK  volver a la cuadrícula", 14f, Color.parseColor("#C9CED6"))
             val hlp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             hlp.setMargins(0, 0, 0, dp(24))
             content.addView(hint, hlp)
@@ -545,6 +554,7 @@ class MainActivity : Activity() {
     }
 
     private fun exitFull() {
+        ptzReset()
         val idx = fullIndex
         fullIndex = -1
         if (idx >= 0) page = idx / store.gridSize
@@ -583,6 +593,113 @@ class MainActivity : Activity() {
         if (store.auto) handler.postDelayed(autoRunnable, 15000L)
     }
 
+    // ----------------------------------------------------------------- PTZ
+
+    private fun ptzCam(): Camera? = if (fullIndex in cameras.indices) cameras[fullIndex] else null
+
+    private fun ptzSetText(text: String) {
+        val pill = ptzPill
+        if (pill != null) {
+            pill.text = text
+            pill.animate().cancel()
+            pill.alpha = 1f
+            return
+        }
+        val p = pill(text, 15f, Color.WHITE)
+        val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+        lp.setMargins(0, 0, 0, dp(24))
+        content.addView(p, lp)
+        ptzPill = p
+    }
+
+    private fun ptzHelp(): String =
+        if (ptzZoom) "PTZ · ZOOM     ▲ acercar    ▼ alejar    OK  volver a mover    Atrás  salir"
+        else "PTZ     ◀ ▲ ▼ ▶  mover    OK  zoom    Atrás  salir"
+
+    private fun ptzEnter() {
+        val cam = ptzCam() ?: return
+        ptzMode = true
+        ptzZoom = false
+        ptzSetText("PTZ · comprobando…")
+        val idx = fullIndex
+        Ptz.checkSupport(cam) { ok ->
+            runOnUiThread {
+                if (!ptzMode || fullIndex != idx) return@runOnUiThread
+                if (ok == false) {
+                    ptzMode = false
+                    ptzSetText("Esta cámara no tiene PTZ")
+                    ptzPill?.let { fade(it, 2500L) }
+                    handler.postDelayed({ if (!ptzMode) ptzClearPill() }, 3200L)
+                } else {
+                    ptzSetText(ptzHelp())
+                }
+            }
+        }
+    }
+
+    private fun ptzClearPill() {
+        ptzPill?.let { content.removeView(it) }
+        ptzPill = null
+    }
+
+    private fun ptzStopNow() {
+        handler.removeCallbacks(ptzWatchdog)
+        val d = ptzDir ?: return
+        ptzDir = null
+        ptzCam()?.let { Ptz.stop(it, d) }
+    }
+
+    private fun ptzReset() {
+        ptzStopNow()
+        ptzMode = false
+        ptzZoom = false
+        ptzClearPill()
+    }
+
+    /** Teclas en modo PTZ. Devuelve true si la tecla se ha usado. */
+    private fun ptzKey(event: KeyEvent): Boolean {
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val key = event.keyCode
+        when (key) {
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                if (down && event.repeatCount == 0) ptzReset()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                if (down && event.repeatCount == 0) {
+                    ptzStopNow()
+                    ptzZoom = !ptzZoom
+                    ptzSetText(ptzHelp())
+                }
+                return true
+            }
+        }
+        val dir: Ptz.Dir? = when (key) {
+            KeyEvent.KEYCODE_DPAD_UP -> if (ptzZoom) Ptz.Dir.ZOOM_IN else Ptz.Dir.UP
+            KeyEvent.KEYCODE_DPAD_DOWN -> if (ptzZoom) Ptz.Dir.ZOOM_OUT else Ptz.Dir.DOWN
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (ptzZoom) null else Ptz.Dir.LEFT
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (ptzZoom) null else Ptz.Dir.RIGHT
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> Ptz.Dir.ZOOM_IN
+            KeyEvent.KEYCODE_MEDIA_REWIND -> Ptz.Dir.ZOOM_OUT
+            else -> return false
+        }
+        if (dir == null) return true
+        val cam = ptzCam() ?: return true
+        if (down) {
+            if (ptzDir != dir) {
+                ptzStopNow()
+                ptzDir = dir
+                Ptz.start(cam, dir)
+            }
+            // por si se pierde el aviso de "tecla soltada", se para solo
+            handler.removeCallbacks(ptzWatchdog)
+            handler.postDelayed(ptzWatchdog, 1200L)
+        } else if (ptzDir == dir) {
+            ptzStopNow()
+        }
+        return true
+    }
+
     // --------------------------------------------------------------- Mando
 
     private fun isInPanel(v: View): Boolean {
@@ -596,9 +713,14 @@ class MainActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (pinStore.isSet() && !unlocked) return super.dispatchKeyEvent(event)
+        if (fullIndex >= 0 && ptzMode && ptzKey(event)) return true
         if (event.action == KeyEvent.ACTION_DOWN) {
             if (fullIndex >= 0) {
                 when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_MENU -> {
+                        if (event.repeatCount == 0) ptzEnter()
+                        return true
+                    }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                         showFull(fullIndex - 1)
                         return true

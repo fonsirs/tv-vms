@@ -137,7 +137,7 @@ class EventHub(
                     return
                 } catch (e: Exception) {
                     if (stopped) return
-                    onStatus(g.key, g.label, "sin eventos: " + (e.message ?: e.javaClass.simpleName).take(60))
+                    onStatus(g.key, g.label, "sin eventos: " + (e.message ?: e.javaClass.simpleName).replace(Regex("com\\.android\\.okhttp\\.Address@\\w+"), "equipo").take(60))
                 }
                 try {
                     Thread.sleep(delay)
@@ -148,14 +148,27 @@ class EventHub(
             }
         }
 
+        private var dahuaVariant = 0
+
         private fun base(): String = "http://" + g.cams[0].host + ":" + g.cams[0].onvifPort
 
         // ---------------------------------------------------------------- Dahua
 
         private fun runDahua() {
             val c0 = g.cams[0]
-            val url = base() + "/cgi-bin/eventManager.cgi?action=attach&codes=%5BAll%5D&heartbeat=5"
-            val cn = Http.connect(url, c0.user, c0.pass, 5000, 30000)
+            // Algunos equipos cortan la conexión con ciertos parámetros: se prueban variantes hasta que una entra
+            val variants = arrayOf(
+                "action=attach&codes=%5BAll%5D&heartbeat=5",
+                "action=attach&codes=[All]",
+                "action=attach&codes=%5BVideoMotion%2CSmartMotionHuman%2CSmartMotionVehicle%2CCrossLineDetection%2CCrossRegionDetection%2CVideoBlind%5D&heartbeat=5"
+            )
+            val url = base() + "/cgi-bin/eventManager.cgi?" + variants[dahuaVariant % variants.size]
+            val cn = try {
+                Http.connect(url, c0.user, c0.pass, 5000, 30000)
+            } catch (e: IOException) {
+                dahuaVariant++
+                throw e
+            }
             conn = cn
             onStatus(g.key, g.label, "escuchando")
             try {

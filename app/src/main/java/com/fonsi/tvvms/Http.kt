@@ -13,26 +13,47 @@ import java.security.SecureRandom
 object Http {
 
     /** Abre la URL y devuelve la conexión con respuesta 200 lista para leer. Quien la llama debe cerrarla. */
-    fun connect(url: String, user: String, pass: String, connectMs: Int, readMs: Int): HttpURLConnection {
+    fun connect(
+        url: String, user: String, pass: String, connectMs: Int, readMs: Int,
+        method: String = "GET", body: String? = null, contentType: String? = null
+    ): HttpURLConnection {
         try {
-            return connectOnce(url, user, pass, connectMs, readMs)
+            return connectOnce(url, user, pass, connectMs, readMs, method, body, contentType)
         } catch (e: IOException) {
             // un corte al empezar es habitual en estos equipos: un segundo intento casi siempre entra
             if ((e.message ?: "").startsWith("HTTP")) throw e
             Thread.sleep(400L)
-            return connectOnce(url, user, pass, connectMs, readMs)
+            return connectOnce(url, user, pass, connectMs, readMs, method, body, contentType)
         }
     }
 
-    private fun connectOnce(url: String, user: String, pass: String, connectMs: Int, readMs: Int): HttpURLConnection {
-        var conn = open(url, null, connectMs, readMs)
+    /** Envía una orden (PUT/POST/GET) y descarta la respuesta; lanza IOException si no es 2xx. */
+    fun send(url: String, user: String, pass: String, method: String, body: String? = null, contentType: String? = null) {
+        val conn = connect(url, user, pass, 4000, 6000, method, body, contentType)
+        try {
+            conn.inputStream.use { input ->
+                val buf = ByteArray(2048)
+                while (input.read(buf) >= 0) { /* descartar */ }
+            }
+        } catch (e: IOException) {
+            // la orden ya se aceptó (2xx); el cierre brusco de la respuesta no importa
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun connectOnce(
+        url: String, user: String, pass: String, connectMs: Int, readMs: Int,
+        method: String, body: String?, contentType: String?
+    ): HttpURLConnection {
+        var conn = open(url, null, connectMs, readMs, method, body, contentType)
         var code = conn.responseCode
         if (code == 401 && user.isNotBlank()) {
             val challenge = pickChallenge(conn.headerFields["WWW-Authenticate"])
             conn.disconnect()
-            val auth = challenge?.let { answer(it, "GET", url, user, pass) }
+            val auth = challenge?.let { answer(it, method, url, user, pass) }
                 ?: throw IOException("HTTP 401 (la cámara no admite el tipo de login)")
-            conn = open(url, auth, connectMs, readMs)
+            conn = open(url, auth, connectMs, readMs, method, body, contentType)
             code = conn.responseCode
         }
         if (code !in 200..299) {
@@ -69,9 +90,12 @@ object Http {
         return out.toByteArray()
     }
 
-    private fun open(url: String, auth: String?, connectMs: Int, readMs: Int): HttpURLConnection {
+    private fun open(
+        url: String, auth: String?, connectMs: Int, readMs: Int,
+        method: String = "GET", body: String? = null, contentType: String? = null
+    ): HttpURLConnection {
         val conn = URL(url).openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
+        conn.requestMethod = method
         conn.connectTimeout = connectMs
         conn.readTimeout = readMs
         conn.instanceFollowRedirects = false
@@ -79,6 +103,12 @@ object Http {
         // Los Dahua/Hikvision cierran las conexiones: sin esto Android reutiliza una ya cerrada ("unexpected end of stream")
         conn.setRequestProperty("Connection", "close")
         if (auth != null) conn.setRequestProperty("Authorization", auth)
+        if (body != null) {
+            val bytes = body.toByteArray(Charsets.UTF_8)
+            conn.doOutput = true
+            if (contentType != null) conn.setRequestProperty("Content-Type", contentType)
+            conn.outputStream.use { it.write(bytes) }
+        }
         return conn
     }
 
