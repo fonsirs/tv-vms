@@ -127,4 +127,11 @@ class CameraStore(context: Context) {
         set(v) {
             prefs.edit().putBoolean("eventsOpen", v).apply()
         }
+
+    /** Cámaras de la vista personalizada (ids), en el orden en que están en la lista. */
+    var customIds: List<String>
+        get() = (prefs.getString("customIds", "") ?: "").split(',').filter { it.isNotBlank() }
+        set(v) {
+            prefs.edit().putString("customIds", v.joinToString(",")).apply()
+        }
 }

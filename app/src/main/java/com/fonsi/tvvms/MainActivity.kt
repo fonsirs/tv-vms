@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     private lateinit var chip4: Chip
     private lateinit var chip8: Chip
     private lateinit var chip16: Chip
+    private lateinit var chipCustom: Chip
     private lateinit var chipAuto: Chip
     private lateinit var chipHd: Chip
     private lateinit var chipEvents: Chip
@@ -225,6 +226,7 @@ class MainActivity : Activity() {
         chip4 = chip("4") { setGrid(4) }
         chip8 = chip("8") { setGrid(8) }
         chip16 = chip("16") { setGrid(16) }
+        chipCustom = chip("Mía") { onCustomChip() }
         val prev = chip("‹") { changePage(-1) }
         val next = chip("›") { changePage(1) }
         pageLabel = TextView(this)
@@ -263,6 +265,7 @@ class MainActivity : Activity() {
         addToBar(chip4, 28)
         addToBar(chip8)
         addToBar(chip16)
+        addToBar(chipCustom)
         addToBar(prev, 22)
         addToBar(pageLabel, 0)
         addToBar(next, 0)
@@ -302,6 +305,7 @@ class MainActivity : Activity() {
         chip4.active = g == 4
         chip8.active = g == 8
         chip16.active = g == 16
+        chipCustom.active = g == 0
         chipAuto.active = store.auto
         chipAuto.text = if (store.auto) "Auto ●" else "Auto"
         chipHd.active = store.hd
@@ -313,7 +317,66 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------- Rejilla
 
+    /** Cámaras que se ven en la cuadrícula: todas, o solo las elegidas en la vista personalizada. */
+    private fun shownCameras(): List<Camera> {
+        if (store.gridSize != 0) return cameras
+        val ids = store.customIds
+        return cameras.filter { it.id in ids }
+    }
+
+    private fun onCustomChip() {
+        val already = store.gridSize == 0
+        if (!already && shownCameras().let { store.customIds.isNotEmpty() && it.isNotEmpty() }) {
+            setGrid(0)
+        } else {
+            showCustomPicker()
+        }
+    }
+
+    private fun showCustomPicker() {
+        if (cameras.isEmpty()) {
+            Toast.makeText(this, "Primero añade cámaras", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = cameras.map { it.name }.toTypedArray()
+        val current = store.customIds
+        val checked = BooleanArray(cameras.size) { cameras[it].id in current }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Elige las cámaras de tu vista (máx. 16)")
+            .setMultiChoiceItems(names, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton("Guardar", null)
+            .setNeutralButton("Marcar todas", null)
+            .setNegativeButton("Cancelar", null)
+            .create()
+        dlg.setOnShowListener {
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val all = checked.any { !it }
+                for (i in checked.indices) {
+                    checked[i] = all
+                    dlg.listView.setItemChecked(i, all)
+                }
+            }
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val ids = ArrayList<String>()
+                for (i in cameras.indices) if (checked[i]) ids.add(cameras[i].id)
+                if (ids.isEmpty()) {
+                    Toast.makeText(this, "No has marcado ninguna cámara", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (ids.size > 16) {
+                    Toast.makeText(this, "Máximo 16 cámaras (has marcado " + ids.size + ")", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                store.customIds = ids
+                dlg.dismiss()
+                setGrid(0)
+            }
+        }
+        dlg.show()
+    }
+
     private fun pageCount(): Int {
+        if (store.gridSize == 0) return 1
         val size = store.gridSize
         return maxOf(1, (cameras.size + size - 1) / size)
     }
@@ -415,10 +478,18 @@ class MainActivity : Activity() {
         wall = null
         content.setPadding(dp(8), dp(2), dp(8), dp(8))
 
-        val size = store.gridSize
+        val shown = shownCameras()
+        val custom = store.gridSize == 0
+        val size = if (custom) maxOf(1, shown.size) else store.gridSize
         // 4 → 2x2, 8 → 3x3 (8 cámaras y un hueco), 16 → 4x4: así cada cuadro es 16:9 y la imagen lo llena
-        val cols = when (size) { 4 -> 2; 8 -> 3; else -> 4 }
-        val rows = when (size) { 4 -> 2; 8 -> 3; else -> 4 }
+        var cols = when (size) { 4 -> 2; 8 -> 3; else -> 4 }
+        var rows = when (size) { 4 -> 2; 8 -> 3; else -> 4 }
+        if (custom) {
+            // vista propia: tantas columnas y filas como hagan falta para las cámaras elegidas
+            val n = size
+            cols = when { n <= 1 -> 1; n <= 2 -> 2; n <= 4 -> 2; n <= 6 -> 3; n <= 9 -> 3; n <= 12 -> 4; else -> 4 }
+            rows = (n + cols - 1) / cols
+        }
         val pages = pageCount()
         if (page >= pages) page = 0
 
@@ -427,14 +498,21 @@ class MainActivity : Activity() {
             pageLabel.text = "0 cámaras"
             return
         }
+        if (shown.isEmpty()) {
+            // la vista propia se quedó sin cámaras (se borraron): vuelve a la cuadrícula normal
+            store.gridSize = 4
+            updateBar()
+            renderGrid()
+            return
+        }
 
         val w = WallLayout(this)
         w.cols = cols
         w.rows = rows
         val from = page * size
-        val to = minOf(cameras.size, from + size)
+        val to = minOf(shown.size, from + size)
         for (i in from until to) {
-            val cam = cameras[i]
+            val cam = shown[i]
             val tile = TileView(this, cam, false, false)
             tile.setInfo(store.showInfo)
             tile.setOnClickListener {
@@ -454,7 +532,7 @@ class MainActivity : Activity() {
                 if (tiles.contains(t)) t.start()
             }, n * 250L)
         }
-        pageLabel.text = (page + 1).toString() + " / " + pages + "   ·   " + cameras.size + " cámaras"
+        pageLabel.text = (if (custom) "Mi vista" else (page + 1).toString() + " / " + pages) + "   ·   " + shown.size + " cámaras"
         if (bar.visibility != View.VISIBLE) tiles.firstOrNull()?.requestFocus()
     }
 
@@ -557,11 +635,12 @@ class MainActivity : Activity() {
         ptzReset()
         val idx = fullIndex
         fullIndex = -1
-        if (idx >= 0) page = idx / store.gridSize
+        if (idx >= 0 && store.gridSize > 0) page = idx / store.gridSize
         renderGrid()
         if (idx >= 0) {
-            val k = idx % store.gridSize
-            if (k < tiles.size) tiles[k].requestFocus()
+            val id = cameras.getOrNull(idx)?.id
+            val t = tiles.firstOrNull { it.camera.id == id } ?: tiles.firstOrNull()
+            t?.requestFocus()
         }
     }
 
@@ -689,7 +768,10 @@ class MainActivity : Activity() {
             if (ptzDir != dir) {
                 ptzStopNow()
                 ptzDir = dir
-                Ptz.start(cam, dir)
+                val idx = fullIndex
+                Ptz.start(cam, dir) { msg ->
+                    runOnUiThread { if (ptzMode && fullIndex == idx) ptzSetText("PTZ: " + msg) }
+                }
             }
             // por si se pierde el aviso de "tecla soltada", se para solo
             handler.removeCallbacks(ptzWatchdog)

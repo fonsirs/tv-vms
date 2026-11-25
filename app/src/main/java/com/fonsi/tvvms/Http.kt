@@ -27,19 +27,25 @@ object Http {
         }
     }
 
-    /** Envía una orden (PUT/POST/GET) y descarta la respuesta; lanza IOException si no es 2xx. */
-    fun send(url: String, user: String, pass: String, method: String, body: String? = null, contentType: String? = null) {
+    /** Envía una orden (PUT/POST/GET), lanza IOException si no es 2xx y devuelve el principio de la respuesta. */
+    fun send(url: String, user: String, pass: String, method: String, body: String? = null, contentType: String? = null): String {
         val conn = connect(url, user, pass, 4000, 6000, method, body, contentType)
+        val out = ByteArrayOutputStream()
         try {
             conn.inputStream.use { input ->
                 val buf = ByteArray(2048)
-                while (input.read(buf) >= 0) { /* descartar */ }
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    if (out.size() < 1024) out.write(buf, 0, n)
+                }
             }
         } catch (e: IOException) {
             // la orden ya se aceptó (2xx); el cierre brusco de la respuesta no importa
         } finally {
             conn.disconnect()
         }
+        return String(out.toByteArray(), Charsets.UTF_8).trim()
     }
 
     private fun connectOnce(

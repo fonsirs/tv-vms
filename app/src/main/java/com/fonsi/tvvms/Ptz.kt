@@ -34,8 +34,15 @@ object Ptz {
         }
     }
 
-    fun start(cam: Camera, dir: Dir) {
-        exec.execute { try { send(cam, dir, true) } catch (e: Exception) { /* sin PTZ o sin red: no hay nada que hacer */ } }
+    /** Empieza a mover. Si la cámara lo rechaza, onError recibe el motivo (se muestra en pantalla). */
+    fun start(cam: Camera, dir: Dir, onError: ((String) -> Unit)? = null) {
+        exec.execute {
+            try {
+                send(cam, dir, true)
+            } catch (e: Exception) {
+                onError?.invoke((e.message ?: e.javaClass.simpleName).take(80))
+            }
+        }
     }
 
     fun stop(cam: Camera, dir: Dir) {
@@ -86,7 +93,8 @@ object Ptz {
                 }
                 val url = base(cam) + "/cgi-bin/ptz.cgi?action=" + (if (go) "start" else "stop") +
                     "&channel=" + (cam.channel - 1) + "&code=" + code + "&arg1=0&arg2=5&arg3=0"
-                Http.send(url, cam.user, cam.pass, "GET")
+                val r = Http.send(url, cam.user, cam.pass, "GET")
+                if (r.startsWith("Error", true)) throw IOException("la cámara responde: " + r.replace(Regex("\\s+"), " "))
             }
             Brand.HIKVISION -> {
                 var pan = 0
