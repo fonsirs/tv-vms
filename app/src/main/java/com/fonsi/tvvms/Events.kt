@@ -463,7 +463,7 @@ class EventHub(
                 Brand.HIKVISION -> base() + "/ISAPI/Streaming/channels/" + cam.channel + "01/picture"
                 else -> onvifSnapshotUrl(cam)
             } ?: return null
-            val bytes = Http.getBytes(url, cam.user, cam.pass, 3 * 1024 * 1024)
+            val bytes = Http.getBytes(url, cam.user, cam.pass, 3 * 1024 * 1024, 20000)
             // un JPEG completo acaba en FF D9; si no, la cámara cortó la descarga y la foto saldría con franjas raras
             if (!endsLikeJpeg(bytes)) {
                 if (!allowPartial) throw java.io.IOException("foto incompleta (" + bytes.size + " B)")

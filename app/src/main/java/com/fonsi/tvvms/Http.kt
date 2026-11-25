@@ -73,8 +73,8 @@ object Http {
      * Descarga como mucho maxBytes (por ejemplo una foto). Si el equipo corta la conexión antes de tiempo
      * pero ya envió datos, se devuelve lo recibido (una foto casi completa sirve de miniatura).
      */
-    fun getBytes(url: String, user: String, pass: String, maxBytes: Int): ByteArray {
-        val conn = connect(url, user, pass, 4000, 8000)
+    fun getBytes(url: String, user: String, pass: String, maxBytes: Int, readMs: Int = 8000): ByteArray {
+        val conn = connect(url, user, pass, 4000, readMs)
         val out = ByteArrayOutputStream()
         try {
             val input = conn.inputStream

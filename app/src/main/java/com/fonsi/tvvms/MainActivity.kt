@@ -453,7 +453,7 @@ class MainActivity : Activity() {
                 latch.countDown()
             }
         }
-        latch.await(1500L, java.util.concurrent.TimeUnit.MILLISECONDS)
+        latch.await(4000L, java.util.concurrent.TimeUnit.MILLISECONDS)
         return result
     }
 
