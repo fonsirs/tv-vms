@@ -44,6 +44,8 @@ class MainActivity : Activity() {
     private lateinit var chip8: Chip
     private lateinit var chip16: Chip
     private lateinit var chipCustom: Chip
+    private lateinit var chipPrev: Chip
+    private lateinit var chipNext: Chip
     private lateinit var chipAuto: Chip
     private lateinit var chipHd: Chip
     private lateinit var chipEvents: Chip
@@ -227,8 +229,8 @@ class MainActivity : Activity() {
         chip8 = chip("8") { setGrid(8) }
         chip16 = chip("16") { setGrid(16) }
         chipCustom = chip("Mía") { onCustomChip() }
-        val prev = chip("‹") { changePage(-1) }
-        val next = chip("›") { changePage(1) }
+        chipPrev = chip("‹") { changePage(-1) }
+        chipNext = chip("›") { changePage(1) }
         pageLabel = TextView(this)
         pageLabel.setTextColor(muted)
         pageLabel.textSize = 14f
@@ -266,9 +268,9 @@ class MainActivity : Activity() {
         addToBar(chip8)
         addToBar(chip16)
         addToBar(chipCustom)
-        addToBar(prev, 22)
-        addToBar(pageLabel, 0)
-        addToBar(next, 0)
+        // las flechas de página solo aparecen cuando hay más de una página
+        addToBar(chipPrev, 22)
+        addToBar(chipNext)
         bar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         addToBar(chipAuto)
         addToBar(chipInfo)
@@ -492,6 +494,8 @@ class MainActivity : Activity() {
         }
         val pages = pageCount()
         if (page >= pages) page = 0
+        chipPrev.visibility = if (pages > 1) View.VISIBLE else View.GONE
+        chipNext.visibility = if (pages > 1) View.VISIBLE else View.GONE
 
         if (cameras.isEmpty()) {
             showEmptyState()
@@ -696,24 +700,11 @@ class MainActivity : Activity() {
         else "PTZ     ◀ ▲ ▼ ▶  mover    OK  zoom    Atrás  salir"
 
     private fun ptzEnter() {
-        val cam = ptzCam() ?: return
+        if (ptzCam() == null) return
         ptzMode = true
         ptzZoom = false
-        ptzSetText("PTZ · comprobando…")
-        val idx = fullIndex
-        Ptz.checkSupport(cam) { ok ->
-            runOnUiThread {
-                if (!ptzMode || fullIndex != idx) return@runOnUiThread
-                if (ok == false) {
-                    ptzMode = false
-                    ptzSetText("Esta cámara no tiene PTZ")
-                    ptzPill?.let { fade(it, 2500L) }
-                    handler.postDelayed({ if (!ptzMode) ptzClearPill() }, 3200L)
-                } else {
-                    ptzSetText(ptzHelp())
-                }
-            }
-        }
+        // no se bloquea por la comprobación: algunos equipos (NVR) responden mal a ella aunque la cámara sí tenga PTZ
+        ptzSetText(ptzHelp())
     }
 
     private fun ptzClearPill() {
