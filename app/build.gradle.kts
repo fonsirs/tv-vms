@@ -14,8 +14,8 @@ android {
         applicationId = "com.fonsi.tvvms"
         minSdk = 23
         targetSdk = 35
-        versionCode = 15
-        versionName = "1.14"
+        versionCode = 16
+        versionName = "1.15"
     }
 
     signingConfigs {
