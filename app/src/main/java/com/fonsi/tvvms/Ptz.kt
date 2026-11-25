@@ -34,19 +34,28 @@ object Ptz {
         }
     }
 
-    /** Empieza a mover. Si la cámara lo rechaza, onError recibe el motivo (se muestra en pantalla). */
-    fun start(cam: Camera, dir: Dir, onError: ((String) -> Unit)? = null) {
+    @Volatile private var startedAt = 0L
+
+    /** Empieza a mover. onResult recibe "OK ..." o el motivo del fallo, para enseñarlo en pantalla. */
+    fun start(cam: Camera, dir: Dir, onResult: ((String) -> Unit)? = null) {
         exec.execute {
             try {
-                send(cam, dir, true)
+                val r = send(cam, dir, true)
+                startedAt = System.currentTimeMillis()
+                onResult?.invoke("OK" + (if (r.isNotBlank()) " (" + r.take(40) + ")" else ""))
             } catch (e: Exception) {
-                onError?.invoke((e.message ?: e.javaClass.simpleName).take(80))
+                onResult?.invoke("error: " + (e.message ?: e.javaClass.simpleName).take(80))
             }
         }
     }
 
+    /** Para. Si la pulsación fue muy corta, deja moverse la cámara un mínimo para que se note. */
     fun stop(cam: Camera, dir: Dir) {
-        exec.execute { try { send(cam, dir, false) } catch (e: Exception) { } }
+        exec.execute {
+            val left = 450L - (System.currentTimeMillis() - startedAt)
+            if (left in 1..450) try { Thread.sleep(left) } catch (e: InterruptedException) { }
+            try { send(cam, dir, false) } catch (e: Exception) { }
+        }
     }
 
     // ---------------------------------------------------------------- común
@@ -84,8 +93,8 @@ object Ptz {
         return if (Regex("^HTTP (400|403|404|405|501)").containsMatchIn(m)) false else null
     }
 
-    private fun send(cam: Camera, dir: Dir, go: Boolean) {
-        when (cam.brand) {
+    private fun send(cam: Camera, dir: Dir, go: Boolean): String {
+        return when (cam.brand) {
             Brand.DAHUA -> {
                 val code = when (dir) {
                     Dir.UP -> "Up"; Dir.DOWN -> "Down"; Dir.LEFT -> "Left"; Dir.RIGHT -> "Right"
@@ -95,6 +104,7 @@ object Ptz {
                     "&channel=" + (cam.channel - 1) + "&code=" + code + "&arg1=0&arg2=5&arg3=0"
                 val r = Http.send(url, cam.user, cam.pass, "GET")
                 if (r.startsWith("Error", true)) throw IOException("la cámara responde: " + r.replace(Regex("\\s+"), " "))
+                r.replace(Regex("\\s+"), " ")
             }
             Brand.HIKVISION -> {
                 var pan = 0
@@ -108,7 +118,7 @@ object Ptz {
                 Http.send(
                     base(cam) + "/ISAPI/PTZCtrl/channels/" + cam.channel + "/continuous",
                     cam.user, cam.pass, "PUT", xml, "application/xml"
-                )
+                ).let { if (it.contains("<statusString>OK", true) || it.isBlank()) "" else it.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ") }
             }
             Brand.ONVIF -> {
                 val info = onvifInfo(cam) ?: throw IOException("Sin PTZ ONVIF")
@@ -128,6 +138,7 @@ object Ptz {
                         Onvif.esc(info.token) + "</tptz:ProfileToken><tptz:PanTilt>true</tptz:PanTilt><tptz:Zoom>true</tptz:Zoom></tptz:Stop>"
                 }
                 Onvif.soap(info.ptzUrl, Onvif.security(cam.user, cam.pass, info.offset), body)
+                ""
             }
             else -> throw IOException("Sin PTZ")
         }

@@ -761,7 +761,7 @@ class MainActivity : Activity() {
                 ptzDir = dir
                 val idx = fullIndex
                 Ptz.start(cam, dir) { msg ->
-                    runOnUiThread { if (ptzMode && fullIndex == idx) ptzSetText("PTZ: " + msg) }
+                    runOnUiThread { if (ptzMode && fullIndex == idx) ptzSetText("PTZ " + dir.name + ": " + msg) }
                 }
             }
             // por si se pierde el aviso de "tecla soltada", se para solo
