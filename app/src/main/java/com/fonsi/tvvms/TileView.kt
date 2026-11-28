@@ -175,23 +175,23 @@ class TileView(
             name.setShadowLayer(4f, 0f, 1f, Color.BLACK)
             row.addView(name)
             addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
-
-            val badge = TextView(context)
-            badge.text = if (useMainStream) "HD" else "SD"
-            badge.textSize = 10f
-            badge.typeface = Typeface.DEFAULT_BOLD
-            badge.setTextColor(Color.parseColor("#C9CED6"))
-            val badgeBg = GradientDrawable()
-            badgeBg.setColor(Color.parseColor("#80000000"))
-            badgeBg.cornerRadius = dp(8).toFloat()
-            badge.background = badgeBg
-            badge.setPadding(dp(7), dp(2), dp(7), dp(2))
-            val badgeLp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
-            badgeLp.setMargins(0, dp(8), dp(8), 0)
-            addView(badge, badgeLp)
-            // SD/HD solo se ve unos segundos al poner la cuadrícula y se desvanece
-            badge.animate().alpha(0f).setStartDelay(4000L).setDuration(800L).start()
         }
+
+        val badge = TextView(context)
+        badge.text = if (useMainStream) "HD" else "SD"
+        badge.textSize = if (fullscreen) 14f else 10f
+        badge.typeface = Typeface.DEFAULT_BOLD
+        badge.setTextColor(Color.parseColor("#C9CED6"))
+        val badgeBg = GradientDrawable()
+        badgeBg.setColor(Color.parseColor("#80000000"))
+        badgeBg.cornerRadius = dp(8).toFloat()
+        badge.background = badgeBg
+        badge.setPadding(dp(7), dp(2), dp(7), dp(2))
+        val badgeLp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
+        if (fullscreen) badgeLp.setMargins(0, dp(20), dp(24), 0) else badgeLp.setMargins(0, dp(8), dp(8), 0)
+        addView(badge, badgeLp)
+        // SD/HD solo se ve unos segundos al poner la cuadrícula y se desvanece
+        badge.animate().alpha(0f).setStartDelay(4000L).setDuration(800L).start()
 
         status.setTextColor(Color.parseColor("#D5DAE1"))
         status.textSize = if (fullscreen) 18f else 13f
