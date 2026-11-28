@@ -22,6 +22,10 @@ class EventPanel(context: Context) : LinearLayout(context) {
 
     var onOpen: ((Camera) -> Unit)? = null
 
+    /** Se llama con el evento sobre el que está el cursor (para verlo grande) o con null al salir de la lista. */
+    var onPreview: ((CamEvent?) -> Unit)? = null
+    private var focusedEv: CamEvent? = null
+
     private val gold = Color.parseColor("#C9A04B")
     private val muted = Color.parseColor("#8A93A0")
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -132,7 +136,7 @@ class EventPanel(context: Context) : LinearLayout(context) {
         type.textSize = 16f
         type.typeface = Typeface.DEFAULT_BOLD
         val cam = TextView(context)
-        cam.text = ev.camera.name
+        cam.text = ev.camera.label
         cam.setTextColor(Color.WHITE)
         cam.textSize = 13f
         cam.maxLines = 1
@@ -156,7 +160,20 @@ class EventPanel(context: Context) : LinearLayout(context) {
         row.isClickable = true
         row.setPadding(dp(6), dp(6), dp(6), dp(6))
         paint(row, false)
-        row.setOnFocusChangeListener { _, has -> paint(row, has) }
+        row.setOnFocusChangeListener { _, has ->
+            paint(row, has)
+            if (has) {
+                focusedEv = ev
+                onPreview?.invoke(ev)
+            } else {
+                row.post {
+                    if (focusedEv === ev) {
+                        focusedEv = null
+                        onPreview?.invoke(null)
+                    }
+                }
+            }
+        }
         row.setOnClickListener { onOpen?.invoke(ev.camera) }
         row.addView(thumb, LayoutParams(dp(96), dp(54)))
         val tlp = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -172,6 +189,10 @@ class EventPanel(context: Context) : LinearLayout(context) {
         order.add(0, ev)
         while (order.size > maxEvents) {
             val old = order.removeAt(order.size - 1)
+            if (focusedEv === old) {
+                focusedEv = null
+                onPreview?.invoke(null)
+            }
             rows.remove(old)
             rowViews.remove(old)
             list.removeViewAt(list.childCount - 1)
@@ -180,6 +201,7 @@ class EventPanel(context: Context) : LinearLayout(context) {
 
     fun refreshThumb(ev: CamEvent) {
         val t = rows[ev] ?: return
+        if (focusedEv === ev) onPreview?.invoke(ev)
         val b = ev.thumb
         if (b != null) {
             t.img.setImageBitmap(b)

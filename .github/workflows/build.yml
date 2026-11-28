@@ -39,33 +39,39 @@ jobs:
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
           KS_ALIAS: tvvms
           KS_KEY_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        run: gradle :app:assembleFullRelease :app:assembleLiteRelease --no-daemon --stacktrace
 
       - name: Compilar paquete AAB firmado (para Google Play)
         env:
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
           KS_ALIAS: tvvms
           KS_KEY_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: gradle :app:bundleRelease --no-daemon --stacktrace
+        run: gradle :app:bundleFullRelease --no-daemon --stacktrace
 
       - name: Guardar AAB como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: TV-VMS-aab
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: app/build/outputs/bundle/fullRelease/app-full-release.aab
 
       - name: Renombrar APK
-        run: cp app/build/outputs/apk/release/app-release.apk TV-VMS.apk
+        run: |
+          cp app/build/outputs/apk/full/release/app-full-release.apk TV-VMS.apk
+          cp app/build/outputs/apk/lite/release/app-lite-release.apk TV-VMS-Lite.apk
 
       - name: Guardar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: TV-VMS-apk
-          path: TV-VMS.apk
+          path: |
+            TV-VMS.apk
+            TV-VMS-Lite.apk
 
       - name: Publicar release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: TV VMS build ${{ github.run_number }}
-          files: TV-VMS.apk
+          files: |
+            TV-VMS.apk
+            TV-VMS-Lite.apk

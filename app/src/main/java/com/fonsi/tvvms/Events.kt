@@ -403,7 +403,7 @@ class EventHub(
                     val live = try { grab(cam) } catch (e: Exception) { null }
                     if (live != null) {
                         if (!stopped) {
-                            ev.thumb = trimBands(live)
+                            ev.thumb = trimBands(live).let { it.copy(Bitmap.Config.RGB_565, false) ?: it }
                             onThumb(ev)
                         }
                         return@execute
@@ -571,16 +571,17 @@ class EventHub(
         return i > 0 && (b[i].toInt() and 0xFF) == 0xD9 && (b[i - 1].toInt() and 0xFF) == 0xFF
     }
 
-    /** Reduce la foto a unos 480 px de ancho para que ocupe poco. */
+    /** Reduce la foto a unos 720 px de ancho para que ocupe poco. */
     private fun decode(bytes: ByteArray): Bitmap? {
         val o = BitmapFactory.Options()
         o.inJustDecodeBounds = true
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
         if (o.outWidth <= 0 || o.outHeight <= 0 || o.outWidth > 8000 || o.outHeight > 8000) return null
         var sample = 1
-        while (o.outWidth / (sample * 2) >= 480) sample *= 2
+        while (o.outWidth / (sample * 2) >= 720) sample *= 2
         val o2 = BitmapFactory.Options()
         o2.inSampleSize = sample
+        o2.inPreferredConfig = Bitmap.Config.RGB_565
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o2) ?: return null
         return trimBands(bmp)
     }

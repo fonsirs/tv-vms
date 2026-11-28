@@ -22,6 +22,9 @@ data class Camera(
     val mainUrl: String,
     val subUrl: String
 ) {
+    /** Nombre que se muestra: el que tiene el propio equipo (si se ha podido leer) o el de la app. */
+    val label: String get() = DeviceNames.get(id) ?: name
+
     fun toJson(): JSONObject {
         val o = JSONObject()
         o.put("id", id)

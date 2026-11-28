@@ -14,8 +14,27 @@ android {
         applicationId = "com.fonsi.tvvms"
         minSdk = 23
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.30"
+        versionCode = 32
+        versionName = "1.31"
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // Dos ediciones: "full" (todo) y "lite" (solo ver cámaras: sin eventos ni PTZ), con paquetes distintos
+    flavorDimensions += "edition"
+    productFlavors {
+        create("full") {
+            dimension = "edition"
+            buildConfigField("boolean", "LITE", "false")
+        }
+        create("lite") {
+            dimension = "edition"
+            applicationIdSuffix = ".lite"
+            versionNameSuffix = "-lite"
+            buildConfigField("boolean", "LITE", "true")
+        }
     }
 
     signingConfigs {

@@ -129,8 +129,73 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    // ---- Vista ampliada del evento sobre el que está el cursor
+    private var previewView: FrameLayout? = null
+    private var previewImg: android.widget.ImageView? = null
+    private var previewMsg: TextView? = null
+    private var previewCap: TextView? = null
+
+    private fun showPreview(ev: CamEvent?) {
+        if (ev == null || fullIndex >= 0) {
+            previewView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
+            return
+        }
+        var v = previewView
+        if (v == null) {
+            val root = FrameLayout(this)
+            root.setBackgroundColor(Color.parseColor("#F2000000"))
+            root.isFocusable = false
+            root.isClickable = false
+            val img = android.widget.ImageView(this)
+            img.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            root.addView(img, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            val msg = TextView(this)
+            msg.setTextColor(Color.parseColor("#8A93A0"))
+            msg.textSize = 18f
+            msg.gravity = Gravity.CENTER
+            root.addView(msg, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            val cap = TextView(this)
+            cap.textSize = 18f
+            cap.setTextColor(Color.WHITE)
+            val bg = GradientDrawable()
+            bg.setColor(Color.parseColor("#B3000000"))
+            bg.cornerRadius = dp(22).toFloat()
+            cap.background = bg
+            cap.setPadding(dp(18), dp(8), dp(18), dp(8))
+            val clp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START)
+            clp.setMargins(dp(24), 0, 0, dp(20))
+            root.addView(cap, clp)
+            previewView = root
+            previewImg = img
+            previewMsg = msg
+            previewCap = cap
+            v = root
+        }
+        val b = ev.thumb
+        previewImg?.setImageBitmap(b)
+        val err = ev.thumbError
+        previewMsg?.text = if (b != null) "" else if (err == null) "Cargando foto…" else "Sin foto\n" + err.take(60)
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(ev.time))
+        val sp = android.text.SpannableStringBuilder()
+        val t1 = ev.type
+        sp.append(t1)
+        sp.setSpan(android.text.style.ForegroundColorSpan(ev.kind.color), 0, t1.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sp.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, t1.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sp.append("     " + ev.camera.label + "     " + time)
+        previewCap?.text = sp
+        if (v.parent == null) {
+            content.addView(v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+    }
+
+    private fun fetchNames() {
+        DeviceNames.refresh(cameras) { ui { for (t in tiles) t.refreshName() } }
+    }
+
     private fun startUi() {
+        DeviceNames.init(this)
         cameras = store.load()
+        fetchNames()
         fullIndex = -1
         startEvents()
         renderGrid()
@@ -275,7 +340,7 @@ class MainActivity : Activity() {
         bar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
         addToBar(chipAuto)
         addToBar(chipInfo)
-        addToBar(chipEvents)
+        if (!BuildConfig.LITE) addToBar(chipEvents)
         addToBar(camsChip)
         addToBar(clock, 20)
 
@@ -290,10 +355,11 @@ class MainActivity : Activity() {
             val i = cameras.indexOfFirst { it.id == cam.id }
             if (i >= 0) showFull(i)
         }
+        panel.onPreview = { ev -> showPreview(ev) }
         panel.applyFilter(store.eventFilter)
         panel.setInfoVisible(store.showInfo)
         panel.onFilterChange = { f -> store.eventFilter = f }
-        panel.visibility = if (store.eventsOpen) View.VISIBLE else View.GONE
+        panel.visibility = if (store.eventsOpen && !BuildConfig.LITE) View.VISIBLE else View.GONE
         val body = LinearLayout(this)
         body.orientation = LinearLayout.HORIZONTAL
         body.addView(content, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
@@ -401,6 +467,7 @@ class MainActivity : Activity() {
 
     private fun onCamerasChanged() {
         cameras = store.load()
+        fetchNames()
         fullIndex = -1
         startEvents()
         renderGrid()
@@ -415,6 +482,7 @@ class MainActivity : Activity() {
 
     private fun startEvents() {
         stopEvents()
+        if (BuildConfig.LITE) return
         panel.clearStatus()
         val h = EventHub(
             onEvent = { ev ->
@@ -464,6 +532,7 @@ class MainActivity : Activity() {
     }
 
     private fun toggleEvents() {
+        if (BuildConfig.LITE) return
         store.eventsOpen = !store.eventsOpen
         panel.visibility = if (store.eventsOpen) View.VISIBLE else View.GONE
         if (store.eventsOpen) unseen = 0
@@ -622,14 +691,14 @@ class MainActivity : Activity() {
     }
 
     private fun addFullOverlay(index: Int, first: Boolean) {
-        val info = pill("●  " + cameras[index].name + "     " + (index + 1) + " / " + cameras.size, 16f, Color.WHITE)
+        val info = pill("●  " + cameras[index].label + "     " + (index + 1) + " / " + cameras.size, 16f, Color.WHITE)
         val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START)
         lp.setMargins(dp(24), dp(20), 0, 0)
         content.addView(info, lp)
         fade(info, 3500L)
 
         if (first) {
-            val hint = pill("‹ ›  cambiar de cámara     ▲  PTZ     OK  volver a la cuadrícula", 14f, Color.parseColor("#C9CED6"))
+            val hint = pill(if (BuildConfig.LITE) "‹ ›  cambiar de cámara     OK  volver a la cuadrícula" else "‹ ›  cambiar de cámara     ▲  PTZ     OK  volver a la cuadrícula", 14f, Color.parseColor("#C9CED6"))
             val hlp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             hlp.setMargins(0, 0, 0, dp(24))
             content.addView(hint, hlp)
@@ -702,6 +771,7 @@ class MainActivity : Activity() {
         else "PTZ     ◀ ▲ ▼ ▶  mover    OK  zoom    Atrás  salir"
 
     private fun ptzEnter() {
+        if (BuildConfig.LITE) return
         if (ptzCam() == null) return
         ptzMode = true
         ptzZoom = false

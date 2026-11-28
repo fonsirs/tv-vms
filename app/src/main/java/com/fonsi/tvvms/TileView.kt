@@ -66,6 +66,12 @@ class TileView(
     }
 
     /** Muestra u oculta el rótulo con los datos técnicos del vídeo (botón "i" de la barra). */
+    private var nameView: TextView? = null
+
+    fun refreshName() {
+        nameView?.text = camera.label
+    }
+
     fun setInfo(on: Boolean) {
         infoOn = on
         handler.removeCallbacks(infoTick)
@@ -159,7 +165,8 @@ class TileView(
             dotLp.rightMargin = dp(8)
             row.addView(dot, dotLp)
             val name = TextView(context)
-            name.text = camera.name
+            name.text = camera.label
+            nameView = name
             name.setTextColor(Color.parseColor("#F2F4F7"))
             name.textSize = 13f
             name.typeface = Typeface.DEFAULT_BOLD
@@ -302,7 +309,7 @@ class TileView(
         if (!gotFrame) return null
         val tv = playerView.videoSurfaceView as? TextureView ?: return null
         if (!tv.isAvailable || tv.width <= 0 || tv.height <= 0) return null
-        val w = 480
+        val w = 720
         val h = maxOf(2, w * tv.height / tv.width)
         return try { tv.getBitmap(w, h) } catch (e: Exception) { null }
     }
