@@ -56,8 +56,8 @@ jobs:
 
       - name: Renombrar APK
         run: |
-          cp app/build/outputs/apk/full/release/app-full-release.apk TV-VMS.apk
-          cp app/build/outputs/apk/lite/release/app-lite-release.apk TV-VMS-Lite.apk
+          cp app/build/outputs/apk/full/release/app-full-release.apk TV-VMS-Completa.apk
+          cp app/build/outputs/apk/lite/release/app-lite-release.apk TV-VMS.apk
 
       - name: Guardar APK como artefacto
         uses: actions/upload-artifact@v4
@@ -65,7 +65,7 @@ jobs:
           name: TV-VMS-apk
           path: |
             TV-VMS.apk
-            TV-VMS-Lite.apk
+            TV-VMS-Completa.apk
 
       - name: Publicar release
         uses: softprops/action-gh-release@v2
@@ -74,4 +74,4 @@ jobs:
           name: TV VMS build ${{ github.run_number }}
           files: |
             TV-VMS.apk
-            TV-VMS-Lite.apk
+            TV-VMS-Completa.apk
