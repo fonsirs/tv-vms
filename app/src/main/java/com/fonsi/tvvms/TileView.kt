@@ -189,6 +189,8 @@ class TileView(
             val badgeLp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
             badgeLp.setMargins(0, dp(8), dp(8), 0)
             addView(badge, badgeLp)
+            // SD/HD solo se ve unos segundos al poner la cuadrícula y se desvanece
+            badge.animate().alpha(0f).setStartDelay(4000L).setDuration(800L).start()
         }
 
         status.setTextColor(Color.parseColor("#D5DAE1"))
